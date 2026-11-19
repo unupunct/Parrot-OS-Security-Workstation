@@ -18,7 +18,7 @@ from typing import Callable
 
 from .apt_service import AptService, Transaction
 from .maintenance_service import MaintenanceService
-from .privileged_service import ExecutionResult, PrivilegedBackend, PrivilegedOp
+from .privileged_service import ExecutionResult, Manifest, PrivilegedBackend, PrivilegedOp
 from .process_runner import CommandResult, run_command
 
 Runner = Callable[[list[str], float], CommandResult]
@@ -86,6 +86,7 @@ class CleanResult:
     executed: bool = True
     dry_run: bool = False
     message: str = ""
+    pending_op: PrivilegedOp | None = None     # set when an asynchronous helper must still run it
 
 
 def parse_dpkg_residual(text: str) -> list[str]:
@@ -234,6 +235,8 @@ class CleanupService:
                     except OSError as e:
                         res.errors.append(f"{c.path}: {e}")
             results.append(res)
+            if res.pending_op is not None:        # recorded when the helper reports back (see finish_privileged)
+                continue
             self._maint.record(f"Cleanup: {s.category.title}", "cleanup",
                                "dry run" if dry_run else ("success" if res.executed and not res.errors else
                                                            "not executed" if not res.executed else "failed"),
@@ -245,11 +248,28 @@ class CleanupService:
         cid = s.category.id
         paths = tuple(i.path for i in s.items)
         build = {"apt_cache": lambda: PrivilegedOp("apt_clean"),
-                 "autoremove": lambda: PrivilegedOp("apt_autoremove"),
-                 "residual_configs": lambda: PrivilegedOp("purge_residual_configs", packages=paths),
+                 # the helper re-simulates the transaction as root and refuses anything outside this manifest:
+                 # autoremove may remove exactly the packages that were scanned; a config purge names its packages and the helper checks they are already removed (state rc)
+                 "autoremove": lambda: PrivilegedOp("apt_autoremove", manifest=Manifest(removes=tuple(i.path for i in s.items))),
+                 "residual_configs": lambda: PrivilegedOp("purge_residual_configs", packages=paths, manifest=Manifest(removes=paths)),
                  "var_tmp": lambda: PrivilegedOp("remove_system_files", paths=paths),
                  "logs_system": lambda: PrivilegedOp("remove_system_files", paths=paths)}
         op = build[cid]()      # only the operation for this category is built (and validated)
+        if not hasattr(self.backend, "execute"):   # asynchronous backend (the D-Bus helper): the UI runs it
+            return CleanResult(cid, 0, 0, [], False, False, "waiting for authorization and the helper", pending_op=op)
         out: ExecutionResult = self.backend.execute(op)
         return CleanResult(cid, s.count if out.ok else 0, s.total_size if out.ok else 0,
                            [] if out.ok else ([out.message] if out.executed else []), out.executed, False, out.message)
+
+    def finish_privileged(self, result: CleanResult, scan: CategoryScan, exec_result: ExecutionResult) -> CleanResult:
+        """Complete a category that was handed to an asynchronous helper, and record it."""
+        result.pending_op = None
+        result.executed = exec_result.executed
+        result.removed = scan.count if exec_result.ok else 0
+        result.freed = scan.total_size if exec_result.ok else 0
+        result.errors = [] if exec_result.ok or not exec_result.executed else [exec_result.message]
+        result.message = exec_result.message
+        status = "success" if exec_result.ok else ("failed" if exec_result.executed else "not executed")
+        self._maint.record(f"Cleanup: {scan.category.title}", "cleanup", status, files_removed=result.removed,
+                           errors="" if exec_result.ok else exec_result.message)
+        return result

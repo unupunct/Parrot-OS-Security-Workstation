@@ -47,7 +47,7 @@ class ToolCard(QFrame):
         self.tool_id = status.profile.id
         self.setObjectName("toolCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(140)
+        self.setFixedHeight(140)             # every card the same height, whatever its text
         self.setMinimumWidth(220)
         self.setProperty("selected", False)
         p = status.profile
@@ -409,7 +409,9 @@ class ToolsPage(QWidget):
             self.grid.addWidget(self.cards[sid], i // cols, i % cols)
         for c in range(8):  # reset stale stretch from a previous (wider) layout
             self.grid.setColumnStretch(c, 1 if c < cols else 0)
-        self.grid.setRowStretch(len(self._visible_ids) // cols + 1, 1)
+        rows = (len(self._visible_ids) + cols - 1) // cols
+        for r in range(max(rows + 2, 60)):   # reset stale stretch: only the spacer row below the cards may grow
+            self.grid.setRowStretch(r, 1 if r == rows else 0)
 
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
         if obj is self.scroll.viewport() and ev.type() == QEvent.Type.Resize and self.cards:

@@ -9,6 +9,7 @@ from wifi_center.ui.dashboard import Dashboard
 from wifi_center.ui.main_window import MainWindow
 from wifi_center.ui.navigation import NAVIGATION, all_items
 from wifi_center.ui.pages.planned import PlannedPage
+from wifi_center.ui.pages.root_access_page import RootAccessPage
 from wifi_center.ui.pages.settings_page import SettingsPage
 from wifi_center.ui.theme import build_stylesheet
 
@@ -30,7 +31,7 @@ def test_every_page_can_be_opened(qapp, controller):
         assert w.topbar.heading.text() == item.title
     assert isinstance(w._pages["overview"], Dashboard)
     assert isinstance(w._pages["settings"], SettingsPage)
-    assert isinstance(w._pages["root_access"], PlannedPage)   # Phase 8: still planned
+    assert isinstance(w._pages["root_access"], RootAccessPage)
     w.close()
 
 

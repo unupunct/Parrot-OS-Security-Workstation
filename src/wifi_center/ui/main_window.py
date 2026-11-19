@@ -15,6 +15,7 @@ from ..services.system_service import SystemService
 from ..workers.task import run_in_background
 from .dashboard import Dashboard
 from .design.motion import Motion, fade_in
+from .design.matrix_rain import MatrixRain
 from .design.overlay import StartupOverlay
 from .design.tokens import T
 from .navigation import find_item
@@ -29,6 +30,7 @@ from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.osint_pages import OsintWorkspacePage
 from .pages.planned import PlannedPage
+from .pages.root_access_page import PrivilegeMonitor, RootAccessPage
 from .pages.resource_pages import DocumentationPage, ResourceLibraryPage
 from .pages.settings_page import SettingsPage
 from .pages.spectrum_page import SpectrumPage
@@ -60,6 +62,11 @@ class MainWindow(QMainWindow):
 
         self.topbar = TopBar(app.notifications)
         v.addWidget(self.topbar)
+        # Always-on Matrix rain band between the top bar and the page area; it dissolves into the background.
+        self.rain_band = MatrixRain(0.6, root, fade_bottom=True)
+        self.rain_band.setFixedHeight(76)
+        v.addWidget(self.rain_band)
+        self.sync_rain_band()
 
         accent = app.settings.get("appearance.accent")
         self.sidebar = Sidebar(app.settings.get("ui.collapsed_categories"), accent)
@@ -95,6 +102,7 @@ class MainWindow(QMainWindow):
 
         app.operations.changed.connect(self._ops_changed)
         app.operations.finished.connect(self._op_finished)
+        self.priv_monitor = PrivilegeMonitor(app, self.topbar, self)
         self._monitor = QTimer(self)
         self._monitor.setInterval(5000)
         self._monitor.timeout.connect(self._poll_status)
@@ -111,8 +119,8 @@ class MainWindow(QMainWindow):
         run_in_background(app.tools.scan_all, lambda _r: self._tools_scanned())
         self._poll_status()
         self._poll_updates()
-        want_overlay = app.settings.get("ui.startup_animation") if startup_animation is None else startup_animation
-        if want_overlay and Motion.instance().enabled:
+        # The old corner/startup rain is replaced by the permanent band above; the overlay is opt-in only.
+        if startup_animation and Motion.instance().enabled:
             self._overlay = StartupOverlay(self.centralWidget(), accent)
 
     # ================= navigation =================
@@ -162,6 +170,8 @@ class MainWindow(QMainWindow):
             "kismet": lambda: KismetPage(self.app), "spectrum": lambda: SpectrumPage(self.app),
             "bluetooth": lambda: BluetoothPage(self.app), "packets": lambda: PacketsPage(self.app),
             "terminal": lambda: TerminalPage(self.app),
+            "root_access": lambda: RootAccessPage(self.app, lambda a: self.topbar.set_privileged(a, "Privileged" if a else "Helper ready")),
+            "settings_permissions": lambda: RootAccessPage(self.app, lambda a: self.topbar.set_privileged(a, "Privileged" if a else "Helper ready")),
             "activity": lambda: ActivityPage(self.app, self.open_operation),
             "net_discovery": lambda: NetworkDiscoveryPage(self.app),
             "net_mapping": lambda: NetworkMappingPage(self.app),
@@ -296,10 +306,15 @@ class MainWindow(QMainWindow):
             self.app.notifications.add("Backup failed", str(e), "error")
         self.topbar.refresh_notification_count()
 
+    def sync_rain_band(self) -> None:
+        """The band exists only while animation is on (reduced motion / headless would show an empty strip)."""
+        self.rain_band.setVisible(Motion.instance().enabled)
+
     def _toggle_reduced_motion(self) -> None:
         new = not self.app.settings.get("ui.reduced_motion")
         self.app.settings.set("ui.reduced_motion", new)
         Motion.instance().configure(self.app.settings.get("ui.animation_intensity"), new)
+        self.sync_rain_band()
         self.app.notifications.add("Reduced motion " + ("on" if new else "off"), "", "info")
         self.topbar.refresh_notification_count()
 

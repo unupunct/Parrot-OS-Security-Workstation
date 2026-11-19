@@ -15,10 +15,12 @@ from ...security.input_validation import ValidationError
 from ...services import software_sources as ss
 from ...services.apt_service import Transaction, risk_flags
 from ...services.package_service import PackageDetails
+from ...services.privileged_service import PrivilegedOp, run_privileged
 from ...services.system_service import SystemService
 from ...workers.task import run_in_background
 from ..charts import fmt_ts, make_table
 from ..design.components import GaugeWidget, LoadingIndicator, MatrixButton, MetricTile, Panel
+from ..design.terminal_view import TerminalView
 from ..design.tokens import T
 from ..widgets import human_bytes, human_duration
 from .netsec_common import confirm_dialog
@@ -278,10 +280,8 @@ class SystemUpdatesPage(QWidget):
         self.toggle.setCheckable(True)
         self.toggle.setChecked(True)
         self.toggle.toggled.connect(lambda on: (self.output.setVisible(on), self.toggle.setText(("▾" if on else "▸") + " Live output")))
-        self.output = QPlainTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setStyleSheet(f"font-family: {T.mono_stack};")
-        self.output.setMinimumHeight(110)
+        self.output = TerminalView()
+        self.output.setMinimumHeight(150)
         ol.addWidget(self.toggle)
         ol.addWidget(self.output)
         split.addWidget(out)
@@ -394,7 +394,6 @@ class SystemUpdatesPage(QWidget):
         if not self.app.privileged.available():
             text = f"<p style='color:{T.warning}'>{esc(self.app.privileged.explain_unavailable())}</p>" + text
         ok = confirm_dialog(self, "Update package lists", text, "Update lists" if self.app.privileged.available() else "Close")
-        from ...services.privileged_service import PrivilegedOp
         if not self.app.privileged.available():
             self.app.maintenance.record("Update package lists", "update", "not executed",
                                         errors="privileged helper unavailable; nothing was changed")
@@ -405,12 +404,17 @@ class SystemUpdatesPage(QWidget):
         if self.app.apt.lock_holders():
             _say(self.msg, "Another package manager is running; try again when it finishes.", True)
             return
-        res = self.app.privileged.execute(PrivilegedOp("apt_update"))
-        self.app.maintenance.record("Update package lists", "update", "success" if res.ok else "failed",
-                                    errors="" if res.ok else res.message)
-        self.output.setPlainText("\n".join(res.output) or res.message)
-        _say(self.msg, res.message, not res.ok)
-        self._refresh_tiles(self._tx)
+        self.output.clear()
+        self.output.command("apt-get update", "run by the privileged helper after you authenticate")
+
+        def finished(res) -> None:
+            (self.output.ok if res.ok else self.output.error)(res.message)
+            status = "success" if res.ok else ("failed" if res.executed else "cancelled")
+            self.app.maintenance.record("Update package lists", "update", status, errors="" if res.ok else res.message)
+            _say(self.msg, res.message, not res.ok)
+            self._refresh_tiles(self._tx)
+        _say(self.msg, "Waiting for authorization and the helper…")
+        run_privileged(self.app.privileged, PrivilegedOp("apt_update"), self.output.appendPlainText, finished)
 
     def propose(self, kind: str, apply: bool = True) -> None:
         self._banner()
@@ -427,9 +431,16 @@ class SystemUpdatesPage(QWidget):
             if not apply:
                 _say(self.msg, "Proposed changes shown above; nothing was applied." if tx.ok else f"Failed: {tx.error}", not tx.ok)
                 return
-            self._mark(5, 5)
-            _say(self.msg, apply_transaction(self, self.app, tx, kind), False)
-            self._mark(10)
+            self.output.clear()
+            self.output.command(equivalent_command(kind, None), "run by the privileged helper after you authenticate")
+            self._mark(6, 6)
+
+            def finished(msg: str) -> None:
+                _say(self.msg, msg, msg.startswith(("Failed", "Cannot")))
+                self._mark(10)
+                self._refresh_tiles(None)
+            first = apply_transaction(self, self.app, tx, kind, on_output=self.output.appendPlainText, on_done=finished)
+            _say(self.msg, first, first.startswith(("Failed", "Cannot")))
         run_in_background(lambda: self.app.apt.plan(kind), done, lambda e: (self.loader.stop(), _say(self.msg, f"Failed: {e}", True)))
 
 
@@ -689,7 +700,12 @@ class PackageManagerPage(QWidget):
 
         def done(tx: Transaction) -> None:
             self.loader.stop()
-            _say(self.msg, apply_transaction(self, self.app, tx, kind, [name]))
+
+            def finished(msg: str) -> None:
+                _say(self.msg, msg, msg.startswith(("Failed", "Cannot")))
+                self._reload_history()
+            first = apply_transaction(self, self.app, tx, kind, [name], on_done=finished)
+            _say(self.msg, first, first.startswith(("Failed", "Cannot")))
             self._reload_history()
         run_in_background(lambda: self.app.apt.plan(kind, [name]), done,
                           lambda e: (self.loader.stop(), _say(self.msg, f"Failed: {e}", True)))

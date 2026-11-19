@@ -75,7 +75,7 @@ def test_apply_without_backend_changes_nothing_and_records_it(env, qapp, monkeyp
     page.propose("upgrade")
     assert wait_until(qapp, lambda: not page.loader.active and calls)
     assert calls[0]["ok"] == "Close" and "Nothing has been changed" not in calls[0]["text"] and "Equivalent command" in calls[0]["text"]
-    assert "sudo apt-get upgrade" in calls[0]["text"] and "not installed yet" in calls[0]["text"]
+    assert "sudo apt-get upgrade" in calls[0]["text"] and "not installed" in calls[0]["text"]
     e = c.maintenance.entries()[0]
     assert (e["op_type"], e["result"]) == ("upgrade", "not executed") and "libc6" in e["packages_changed"]
     assert "Nothing was changed" in page.msg.text()
@@ -261,7 +261,8 @@ def test_cleanup_page_dry_run_then_real_run(controller, qapp, tmp_path, monkeypa
     seen = []
     monkeypatch.setattr(cp, "confirm_dialog", lambda parent, title, text, ok="Confirm", box=None, danger=False:
                         (seen.append((title, ok, box, danger)), True)[1])
-    assert page.dry.isChecked()
+    assert not page.dry.isChecked()                           # cleaning is real by default; preview is opt-in
+    page.dry.setChecked(True)
     page.clean()                                              # dry run: nothing deleted
     assert wait_until(qapp, lambda: not page.loader.active and seen)
     assert seen[0][0] == "Dry run" and seen[0][2] is None and thumb.exists() and root_file.exists()

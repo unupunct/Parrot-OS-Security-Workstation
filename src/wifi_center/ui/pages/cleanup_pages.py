@@ -11,8 +11,10 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, Q
 
 from ...application.app_controller import AppController
 from ...services.cleanup_service import CategoryScan, CleanResult
+from ...services.privileged_service import run_privileged
 from ...workers.task import run_in_background
 from ..charts import fmt_ts, make_table
+from ..design.terminal_view import TerminalView
 from ..design.components import LoadingIndicator, MatrixButton
 from ..design.tokens import T
 from ..widgets import human_bytes
@@ -38,15 +40,15 @@ class CleanupPage(QWidget):
         head.addStretch(1)
         lay.addLayout(head)
         note = QLabel("Scan first, read why each category is considered safe, preview the exact candidates, then choose. "
-                      "Documents, settings, projects and active application data are never scanned. Dry run is on by default.")
+                      "Documents, settings, projects and active application data are never scanned. Cleaning is real: files are removed after you confirm (tick “Preview only” for a dry run). System locations are cleaned by the privileged helper after you authenticate.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         lay.addWidget(note)
         top = QHBoxLayout()
         self.b_scan = MatrixButton("Scan system", "primary", "discovery")
         self.b_scan.clicked.connect(self.scan)
-        self.dry = QCheckBox("Dry run (show what would be removed, remove nothing)")
-        self.dry.setChecked(True)
+        self.dry = QCheckBox("Preview only (dry run: remove nothing)")
+        self.dry.setChecked(False)
         self.b_clean = MatrixButton("Clean selected…", "danger")
         self.b_clean.clicked.connect(self.clean)
         self.total = QLabel("")
@@ -68,6 +70,10 @@ class CleanupPage(QWidget):
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 2)
         lay.addWidget(split, 1)
+        self.term = TerminalView()
+        self.term.setMaximumHeight(190)
+        self.term.info("Cleanup terminal: commands and results appear here as they run.")
+        lay.addWidget(self.term)
         self.msg = QLabel("Press “Scan system” to look for candidates. Nothing is removed by scanning.")
         self.msg.setWordWrap(True)
         self.msg.setObjectName("muted")
@@ -169,11 +175,30 @@ class CleanupPage(QWidget):
         self.loader.start()
         self.b_clean.setEnabled(False)
         self.app.audit.record("cleanup.run", categories=ids, dry_run=dry)
+        self.term.command(("preview " if dry else "clean ") + " ".join(ids),
+                          "dry run: nothing is removed" if dry else "removal; system locations go through the helper")
 
         def done(results: list[CleanResult]) -> None:
-            self.loader.stop()
-            self._summary(results, dry)
-            self.scan()
+            pending = [r for r in results if r.pending_op is not None]
+            if not pending:
+                self.loader.stop()
+                self._summary(results, dry)
+                self.scan()
+                return
+            remaining = {"n": len(pending)}
+            by_id = {s.category.id: s for s in self._scans}
+            self.msg.setText("Waiting for authorization and the privileged helper…")
+            for r in pending:
+                def finished(res, r=r) -> None:
+                    self.app.cleanup.finish_privileged(r, by_id[r.category], res)
+                    (self.term.ok if res.ok else self.term.error)(res.message)
+                    remaining["n"] -= 1
+                    if remaining["n"] == 0:
+                        self.loader.stop()
+                        self._summary(results, dry)
+                        self.scan()
+                self.term.command(f"helper: {r.pending_op.summary()}", "authenticate when asked")
+                run_privileged(self.app.privileged, r.pending_op, self.term.appendPlainText, finished)
         run_in_background(lambda: self.app.cleanup.clean(self._scans, ids, dry_run=dry), done,
                           lambda e: (self.loader.stop(), self.msg.setText(f"Cleanup failed: {e}")))
 

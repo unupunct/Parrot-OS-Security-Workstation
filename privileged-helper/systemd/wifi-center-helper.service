@@ -1,0 +1,17 @@
+[Unit]
+Description=WIFI Center privileged helper
+Documentation=file:///usr/share/doc/wifi-center/ROOT_ACCESS.md
+
+[Service]
+Type=dbus
+BusName=org.wificenter.Helper1
+ExecStart=/usr/bin/python3 -I /usr/lib/wifi-center/wifi-center-helper
+# The helper exits by itself after a minute of inactivity and is started again by the system bus when needed.
+# Hardening that does not interfere with apt/dpkg (which must write to the system and run maintainer scripts):
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=no

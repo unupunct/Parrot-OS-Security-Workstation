@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.wificenter.Helper1
+Exec=/usr/bin/python3 -I /usr/lib/wifi-center/wifi-center-helper
+User=root
+SystemdService=wifi-center-helper.service

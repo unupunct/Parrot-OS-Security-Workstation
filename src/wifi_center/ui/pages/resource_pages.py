@@ -7,13 +7,15 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QProgressBar, QPushButton,
-                               QSpinBox, QSplitter, QTabWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
+                               QSpinBox, QSplitter, QTabWidget, QTableWidgetItem, QTextBrowser, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget)
 
 from ...application.app_controller import AppController
 from ...integrations.catalog import PROFILES
 from ...services import resource_catalog as rc
+from ...services import system_wordlists as sysw
 from ...services.resource_library import LibraryError, LibraryService
 from ...workers.task import run_in_background
 from ..charts import NumItem, fmt_ts, make_table
@@ -140,6 +142,8 @@ class ResourceLibraryPage(QWidget):
         lay.addWidget(b)
         lay.addLayout(self._storage_strip())
         self.tabs = QTabWidget()
+        if library == "wordlists":
+            self.tabs.addTab(self._system_tab(), "On this system")
         self.tabs.addTab(self._library_tab(), "Library")
         if library == "wordlists":
             self.tabs.addTab(self._catalog_tab(), f"Catalog ({len(rc.CATALOG)})")
@@ -149,6 +153,164 @@ class ResourceLibraryPage(QWidget):
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
         self.reload()
+
+    # ================================================================ lists already on the system
+    def _system_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        top = QHBoxLayout()
+        self.sys_root = sysw.SYSTEM_ROOT
+        lbl = QLabel(f"Wordlists installed on this system: {self.sys_root}")
+        lbl.setObjectName("muted")
+        top.addWidget(lbl, 1)
+        for text, slot in (("Rescan", self._sys_reload), ("Copy path", self._sys_copy), ("Show folder", self._sys_show),
+                           ("Count lines", self._sys_count), ("Copy selected to library", self._sys_import),
+                           ("Copy all to library", self._sys_import_all)):
+            b = MatrixButton(text)
+            b.clicked.connect(slot)
+            top.addWidget(b)
+        lay.addLayout(top)
+        self.sys_tree = QTreeWidget()
+        self.sys_tree.setColumnCount(5)
+        self.sys_tree.setHeaderLabels(["Name", "Points to", "Type", "Size", "Items / lines"])
+        self.sys_tree.setUniformRowHeights(True)
+        self.sys_tree.setAlternatingRowColors(True)
+        self.sys_tree.setColumnWidth(0, 300)
+        self.sys_tree.setColumnWidth(1, 430)
+        self.sys_tree.itemExpanded.connect(self._sys_expand)
+        lay.addWidget(self.sys_tree, 1)
+        self.sys_note = QLabel("")
+        self.sys_note.setObjectName("muted")
+        self.sys_note.setWordWrap(True)
+        lay.addWidget(self.sys_note)
+        self._sys_reload()
+        return w
+
+    def _sys_item(self, e: "sysw.SystemEntry") -> QTreeWidgetItem:
+        kind = {"dir": "folder", "file": "compressed file" if e.compressed else "file", "broken": "broken link"}[e.kind]
+        it = QTreeWidgetItem([e.name, ("→ " + e.target) if e.target else "", kind,
+                              human_bytes(e.size) if e.kind == "file" else "",
+                              f"{e.children} entries" if e.is_dir else ""])
+        it.setData(0, Qt.ItemDataRole.UserRole, e.path)
+        if e.is_dir:
+            it.setForeground(0, QColor(T.cyan))
+            it.addChild(QTreeWidgetItem(["…"]))       # placeholder: children load when expanded
+        elif e.kind == "broken":
+            it.setForeground(0, QColor(T.danger))
+            it.setToolTip(0, "The link's target does not exist (the package may not be installed).")
+        elif e.compressed:
+            it.setForeground(0, QColor(T.warning))
+            it.setToolTip(0, "Compressed: decompress it yourself (for example gunzip -k) before using it elsewhere.")
+        return it
+
+    def _sys_reload(self) -> None:
+        self.sys_tree.clear()
+        entries = sysw.list_folder(self.sys_root)
+        for e in entries:
+            self.sys_tree.addTopLevelItem(self._sys_item(e))
+        if not entries:
+            self.sys_note.setText(f"{self.sys_root} was not found or is empty. On Parrot OS it is provided by the "
+                                  "wordlists package (sudo apt install wordlists).")
+        else:
+            files = sum(1 for e in entries if not e.is_dir)
+            self.sys_note.setText(f"{len(entries)} entries ({files} files, {len(entries) - files} folders). Read-only: "
+                                  "nothing here is copied, changed or used by WIFI Center.")
+
+    def _sys_expand(self, item: QTreeWidgetItem) -> None:
+        if item.childCount() == 1 and item.child(0).text(0) == "…":
+            item.takeChildren()
+            for e in sysw.list_folder(item.data(0, Qt.ItemDataRole.UserRole)):
+                item.addChild(self._sys_item(e))
+
+    def _sys_path(self) -> str | None:
+        it = self.sys_tree.currentItem()
+        return it.data(0, Qt.ItemDataRole.UserRole) if it else None
+
+    def _sys_copy(self) -> None:
+        path = self._sys_path()
+        if path:
+            QApplication.clipboard().setText(path)
+            self.msg.setText(f"Copied: {path}")
+
+    def _sys_show(self) -> None:
+        path = self._sys_path() or self.sys_root
+        target = Path(path)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target if target.is_dir() else target.parent)))
+
+    def _sys_import(self) -> None:
+        path = self._sys_path()
+        if not path:
+            self.msg.setText("Select a list or a folder first.")
+            return
+        self._sys_copy_into_library([path])
+
+    def _sys_import_all(self) -> None:
+        paths = [self.sys_tree.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole) for i in range(self.sys_tree.topLevelItemCount())]
+        self._sys_copy_into_library(paths)
+
+    def _sys_copy_into_library(self, paths: list[str]) -> None:
+        plan = sysw.plan_copy(paths)
+        if not plan.items:
+            self.msg.setText("Nothing to copy: " + ("; ".join(plan.skipped[:3]) or "no files found."))
+            return
+        free = self.lib.storage()["free"]
+        note = (f"<p>Copy <b>{len(plan.items)}</b> file(s), <b>{human_bytes(plan.total)}</b>, into the library "
+                f"folder <code>{self.lib.root}</code> ({human_bytes(free)} free).</p>"
+                "<p>The originals are not changed. Each copy is hashed and recorded with its source path; files already "
+                "in the library (same content) are skipped.</p>")
+        if plan.truncated:
+            note += "<p>Only the first files were planned (the copy is capped); run it again for the rest.</p>"
+        if plan.skipped:
+            note += f"<p>{len(plan.skipped)} entr{'y' if len(plan.skipped) == 1 else 'ies'} skipped (missing or unreadable).</p>"
+        if plan.total * 1.05 > free:
+            self.msg.setText("Not enough free space in the library folder for this copy.")
+            return
+        if not confirm_dialog(self, "Copy wordlists into the library", note, "Copy"):
+            return
+        self.loader.start()
+        self.msg.setText(f"Copying {len(plan.items)} file(s)…")
+        lib = self.lib
+
+        def work():
+            done = dup = exists = failed = 0
+            for it in plan.items:
+                try:
+                    res = lib.import_file(it.src, it.folder, it.name, source_url="file://" + it.src,
+                                          license="as installed by the distribution", attribution="copied from the system wordlists folder")
+                    if res.duplicate_of:
+                        dup += 1
+                    else:
+                        done += 1
+                except LibraryError as e:
+                    if "already exists" in str(e):
+                        exists += 1
+                    else:
+                        failed += 1
+                except OSError:
+                    failed += 1
+            return done, dup, exists, failed
+
+        def finished(r) -> None:
+            self.loader.stop()
+            done, dup, exists, failed = r
+            self.msg.setText(f"Copied {done} file(s). Skipped {dup} duplicate(s) and {exists} already in the library"
+                             + (f"; {failed} failed." if failed else "."))
+            self.reload()
+
+        run_in_background(work, finished, lambda e: (self.loader.stop(), self.msg.setText(f"Copy failed: {e}")))
+
+    def _sys_count(self) -> None:
+        it = self.sys_tree.currentItem()
+        path = self._sys_path()
+        if not it or not path or Path(path).is_dir():
+            self.msg.setText("Select a file to count its lines.")
+            return
+        self.loader.start()
+        run_in_background(lambda: sysw.line_count(path),
+                          on_done=lambda n: (self.loader.stop(),
+                                               it.setText(4, f"{n:,} lines" if n is not None else "not counted")),
+                          on_error=lambda e: self.loader.stop())
 
     # ================================================================ storage strip
     def _storage_strip(self) -> QHBoxLayout:

@@ -69,7 +69,8 @@ class AppController:
             self.db, lambda: Path(self.settings.get("general.local_resources_dir")
                                   or self.paths.default_resources_dir.parent / "Local"), "local")
         self.maintenance = MaintenanceService(self.db)
-        self.privileged = UnavailableBackend()          # replaced by the Polkit helper in Phase 8
+        from ..services.helper_client import make_backend
+        self.privileged = make_backend() or UnavailableBackend()     # Polkit-guarded helper when QtDBus is present
         self.apt = AptService()
         self.packages = PackageService(self.apt)
         self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)

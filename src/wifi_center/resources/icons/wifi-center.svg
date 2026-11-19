@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0E1A12"/><stop offset="1" stop-color="#050806"/></linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00FF66"/><stop offset="1" stop-color="#00D9CE"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.62" r="0.55"><stop offset="0" stop-color="#00FF66" stop-opacity="0.28"/><stop offset="1" stop-color="#00FF66" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#glow)"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="54.5" fill="none" stroke="url(#g)" stroke-opacity="0.55" stroke-width="3"/>
+  <path d="M128 40 L200 66 V122 C200 166 170 196 128 214 C86 196 56 166 56 122 V66 Z" fill="#0A140E" stroke="url(#g)" stroke-width="7" stroke-linejoin="round"/>
+  <g fill="none" stroke="url(#g)" stroke-width="11" stroke-linecap="round">
+    <path d="M86 112 A60 60 0 0 1 170 112"/>
+    <path d="M102 132 A36 36 0 0 1 154 132"/>
+  </g>
+  <circle cx="128" cy="158" r="11" fill="url(#g)"/>
+</svg>

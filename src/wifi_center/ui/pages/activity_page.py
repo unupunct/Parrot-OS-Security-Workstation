@@ -39,6 +39,16 @@ class ActivityPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(lambda *_: self._open())
         lay.addWidget(self.table, 1)
+        sub = QLabel("Privileged operations (what the helper did for you, from its audit log)")
+        sub.setObjectName("muted")
+        lay.addWidget(sub)
+        self.priv = QTableWidget(0, 4)
+        self.priv.setHorizontalHeaderLabels(["Time (UTC)", "Event", "Operation", "Result"])
+        self.priv.verticalHeader().setVisible(False)
+        self.priv.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.priv.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        lay.addWidget(self.priv, 1)
+        self._priv_tick = 0
         app.operations.changed.connect(self.refresh)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
@@ -60,7 +70,24 @@ class ActivityPage(QWidget):
         if oid is not None:
             self._on_open(oid)
 
+    def _refresh_priv(self) -> None:
+        b = self.app.privileged
+        if not (b.available() and hasattr(b, "recent")):
+            self.priv.setRowCount(0)
+            return
+
+        def fill(rows: list, err: str) -> None:
+            self.priv.setRowCount(len(rows))
+            for r, e in enumerate(rows):
+                for c, v in enumerate([str(e.get("ts", "")).replace("T", " ")[:19], e.get("event", ""),
+                                       e.get("summary", ""), e.get("status", "")]):
+                    self.priv.setItem(r, c, QTableWidgetItem(str(v)))
+        b.recent(30, fill)
+
     def refresh(self) -> None:
+        self._priv_tick += 1
+        if self._priv_tick % 5 == 1:          # the helper is asked every 5 s, not every second
+            self._refresh_priv()
         ops = self.app.operations.operations()
         self.empty.setVisible(not ops)
         sel = self._selected_id()

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<!--
+  Polkit actions of the WIFI Center privileged helper.
+
+  Every action requires an administrator to authenticate. `auth_admin_keep` (active local session only) lets Polkit
+  retain the authorization for a short period (a few minutes by default, set by the system's Polkit configuration), so a
+  maintenance session does not prompt for every single step. Remote and inactive sessions must authenticate every time.
+  Tighten or relax these defaults locally with a rules file in /etc/polkit-1/rules.d/ if your policy requires it.
+-->
+<policyconfig>
+  <vendor>WIFI Center</vendor>
+  <vendor_url>https://github.com/unupunct/Parrot-OS-Security-Workstation</vendor_url>
+
+  <action id="org.wificenter.helper.maintenance">
+    <description>Change packages on this system</description>
+    <message>Authentication is required to refresh, upgrade, install or remove packages</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.wificenter.helper.cleanup-files">
+    <description>Remove old system files</description>
+    <message>Authentication is required to delete old temporary files and rotated logs</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.wificenter.helper.network-interface">
+    <description>Change the mode of a wireless interface</description>
+    <message>Authentication is required to switch a wireless interface to monitor mode or restore it</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.wificenter.helper.diagnostics">
+    <description>Read system diagnostics</description>
+    <message>Authentication is required to read the system journal and service status</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

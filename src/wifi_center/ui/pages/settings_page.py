@@ -104,6 +104,7 @@ class SettingsPage(QWidget):
         st.set("ui.animation_intensity", self.intensity.currentText())
         st.set("ui.reduced_motion", self.reduced.isChecked())
         Motion.instance().configure(self.intensity.currentText(), self.reduced.isChecked())
+        getattr(self.window(), "sync_rain_band", lambda: None)()
 
     def _accent_picked(self, idx: int) -> None:
         presets = list(ACCENT_PRESETS.values())

@@ -19,7 +19,6 @@ from ..workers.task import run_in_background
 from .board import WidgetBoard
 from .charts import make_plot
 from .design.components import GaugeWidget, LoadingIndicator, MatrixButton, MetricTile, Panel
-from .design.matrix_rain import MatrixRain
 from .design.tokens import T
 from .topology import TopologyView
 from .widgets import human_bytes, human_duration
@@ -77,10 +76,6 @@ class Dashboard(QWidget):
 
     # ================= layout =================
     def _build(self) -> None:
-        # Atmosphere: a Matrix-rain band behind the page header. It is deliberately NOT full-screen: every rain
-        # frame repaints the widgets overlapping it, so it is confined to the (cheap) header area.
-        self.rain = MatrixRain(0.55, self, fade_bottom=True)
-        self.rain.lower()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -149,10 +144,6 @@ class Dashboard(QWidget):
             "ui.dashboard_layout", self.board.layout_state()))
         col.addWidget(self.board)
         col.addStretch(1)
-
-    def resizeEvent(self, e) -> None:  # noqa: N802
-        super().resizeEvent(e)
-        self.rain.setGeometry(0, 0, self.width(), 120)
 
     def _simple_panel(self, title: str, attr: str) -> Panel:
         p = Panel(title)

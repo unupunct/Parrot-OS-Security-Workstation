@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QWidget
 
 from ...application.app_controller import AppController
 from ...services.apt_service import Transaction, risk_flags
-from ...services.privileged_service import PrivilegedOp
+from ...services.privileged_service import PrivilegedOp, build_op, run_privileged
 from ..design.tokens import T
 from .netsec_common import confirm_dialog
 
@@ -43,7 +43,7 @@ def proposal_html(tx: Transaction, limit: int = 14) -> str:
 
 
 def apply_transaction(parent: QWidget, app: AppController, tx: Transaction, kind: str, packages: list[str] | None = None,
-                      op: PrivilegedOp | None = None) -> str:
+                      op: PrivilegedOp | None = None, on_output=None, on_done=None) -> str:
     """The confirmed workflow: show the actual proposal, require explicit approval, refuse while another package
     manager is running, execute through the privileged backend and record the outcome. Returns a status message."""
     title = TITLES.get(kind, kind)
@@ -78,12 +78,22 @@ def apply_transaction(parent: QWidget, app: AppController, tx: Transaction, kind
                 "overrides package-manager locks.")
     if not app.apt.begin_transaction():
         return "A package transaction is already in progress in this application."
+    app.audit.record("apt.apply", kind=kind, packages=names[:50])
     try:
-        app.audit.record("apt.apply", kind=kind, packages=names[:50])
-        op = op or PrivilegedOp(OP_FOR_KIND[kind], packages=tuple(packages or ()))
-        res = backend.execute(op)
-    finally:
+        op = op or build_op(kind, packages, tx)      # carries the manifest the helper re-checks as root
+    except Exception as e:
         app.apt.end_transaction()
-    app.maintenance.record(title, op_type, "success" if res.ok else "failed", packages=names,
-                           errors="" if res.ok else res.message, log_ref="")
-    return ("Applied: " if res.ok else "Failed: ") + res.message
+        return f"Cannot continue: {e}"
+    result: dict[str, str] = {}
+
+    def finish(res) -> None:
+        app.apt.end_transaction()
+        status = "success" if res.ok else ("failed" if res.executed else "cancelled")
+        app.maintenance.record(title, op_type, status, packages=names, errors="" if res.ok else res.message)
+        msg = ("Applied: " if res.ok else ("Failed: " if res.executed else "Not applied: ")) + res.message
+        result["msg"] = msg
+        if on_done:
+            on_done(msg)
+
+    run_privileged(backend, op, on_output or (lambda line: None), finish)
+    return result.get("msg", "Started: waiting for authorization and the helper…")

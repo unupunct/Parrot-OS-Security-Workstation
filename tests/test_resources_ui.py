@@ -37,7 +37,9 @@ class FakeDialog:
 @pytest.fixture
 def page(controller, qapp, tmp_path):
     controller.settings.set("general.resources_dir", str(tmp_path / "lib"))
-    return ResourceLibraryPage(controller, "wordlists")
+    p = ResourceLibraryPage(controller, "wordlists")
+    p.tabs.setCurrentIndex(1)          # tab 0 is the read-only "On this system" view
+    return p
 
 
 def src(tmp_path, name="list.txt", text="alpha\nbravo\ncharlie\n"):
@@ -129,7 +131,7 @@ def test_rename_favorite_search_and_folder_views(page, qapp, monkeypatch, tmp_pa
 
 
 def test_catalog_tab_actions_follow_entry_kind(page, qapp, monkeypatch):
-    assert page.ctable.rowCount() == 10 and page.tabs.count() == 3
+    assert page.ctable.rowCount() == 10 and page.tabs.count() == 4
     rows = {page.ctable.item(r, 0).data(0x0100): r for r in range(10)}      # Qt.UserRole
     shown = lambda *bs: [not b.isHidden() for b in bs]
     page.ctable.selectRow(rows["probable-wordlists"])
@@ -215,3 +217,23 @@ def test_documentation_hub_lists_tools_and_local_guides(controller, qapp, monkey
     page.table.selectRow(0)
     page._open()
     assert opened == ["https://nmap.org/docs.html"] and opened   # nothing opens until Open is pressed
+
+
+def test_system_tab_lists_and_copies_into_library(page, qapp, tmp_path, monkeypatch):
+    sysdir = tmp_path / "usr_wordlists"
+    (sysdir / "dirb").mkdir(parents=True)
+    (sysdir / "rockyou.txt").write_bytes(b"one" + bytes([10]) + b"two" + bytes([10]))
+    (sysdir / "dirb" / "common.txt").write_bytes(b"a" + bytes([10]))
+    page.sys_root = str(sysdir)
+    page._sys_reload()
+    assert page.sys_tree.topLevelItemCount() == 2 and "2 entries" in page.sys_note.text()
+    monkeypatch.setattr(rp, "confirm_dialog", lambda *a, **k: False)
+    page._sys_import_all()
+    assert page.lib.files() == []                                  # declining copies nothing
+    monkeypatch.setattr(rp, "confirm_dialog", lambda *a, **k: True)
+    page._sys_import_all()
+    assert wait_until(qapp, lambda: len(page.lib.files()) == 2 and "Copied 2" in page.msg.text())
+    assert {f["path"] for f in page.lib.files()} == {"wordlists/rockyou.txt", "wordlists/dirb/common.txt"}
+    assert (sysdir / "rockyou.txt").exists()                       # originals untouched
+    page._sys_import_all()
+    assert wait_until(qapp, lambda: "Copied 0" in page.msg.text())  # second run: duplicates skipped
