@@ -171,7 +171,7 @@ def test_5ghz_graph_uses_equal_channel_slots():
 
 def test_adapter_page_monitor_mode_goes_through_the_helper(qapp, controller, monkeypatch):
     from wifi_center.services.privileged_service import ExecutionResult
-    from wifi_center.ui.pages import wireless_pages as wp
+    from wifi_center.ui.pages import adapter_page as wp
 
     class Backend:
         name = "fake"

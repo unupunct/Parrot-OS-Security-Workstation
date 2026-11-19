@@ -19,7 +19,12 @@ class BloodHoundIntegration(ToolIntegration):
         base = super().get_health_status()
         if base.level in (Health.MISSING, Health.ERROR):
             return base
-        r = self.probe.run(["docker", "info", "--format", "{{.ServerVersion}}"], timeout=10)
+        # plain `docker info`: the --format field names differ between Docker and Podman (podman-docker), the exit status does not
+        r = self.probe.run(["docker", "info"], timeout=10)
         if not r.ok:
-            return HealthStatus(Health.WARNING, "Docker daemon is not reachable (is it running, and are you in the docker group?)")
-        return base
+            return HealthStatus(Health.WARNING, "The container runtime is not reachable (is Docker/Podman available to your user?)")
+        ps = self.probe.run(["docker", "ps", "--format", "{{.Names}}"], timeout=10)
+        names = [n for n in (ps.stdout.splitlines() if ps.ok else []) if "bloodhound" in n.lower()]
+        if names:
+            return HealthStatus(Health.OK, f"BloodHound CE is running ({len(names)} container(s)); the web UI is on its configured local address.")
+        return HealthStatus(base.level, "Container runtime reachable; no BloodHound container is running. Start it with its compose file.")             if base.level == Health.OK else base

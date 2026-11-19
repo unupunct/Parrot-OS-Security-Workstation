@@ -379,3 +379,18 @@ def test_form_factor_is_inferred_from_bus_and_chassis():
     assert form_factor_of("pci", 3) == "pcie" and form_factor_of("pci", None) == "pcie"            # desktop tower: an add-in card
     assert [form_factor_of("pci", c) for c in (9, 10, 13, 31)] == ["m2"] * 4                       # laptop / all-in-one: internal module
     assert form_factor_of("sdio", 9) == "unknown" and form_factor_of(None, None) == "unknown"
+
+
+def test_scans_returns_recent_scans_oldest_first(tmp_path):
+    import time
+
+    from wifi_center.database.repository import Database
+    from wifi_center.services.wireless_service import AccessPoint, WirelessService
+    svc = WirelessService(Database(":memory:"))
+    assert svc.scans() == []
+    svc.record([AccessPoint("AA:BB:CC:00:00:01", "Alpha", 1, 2412, -50, None, "WPA2")])
+    time.sleep(1.1)
+    svc.record([AccessPoint("AA:BB:CC:00:00:01", "Alpha", 1, 2412, -60, None, "WPA2"), AccessPoint("AA:BB:CC:00:00:02", "Beta", 36, 5180, -70, None, "WPA3")])
+    scans = svc.scans()
+    assert [len(s["aps"]) for s in scans] == [1, 2] and scans[0]["ts"] < scans[1]["ts"]
+    assert scans[1]["aps"][0]["signal_dbm"] in (-60, -70) and len(svc.scans(limit=1)) == 1

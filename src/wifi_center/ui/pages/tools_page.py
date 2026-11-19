@@ -200,8 +200,8 @@ class ToolDetailPanel(QFrame):
         h.append("<h4>Capabilities</h4><ul>" + "".join(
             f"<li>{esc(c)}</li>" for c in self.app.tools.integration(p.id).get_capabilities()) + "</ul>")
         h.append(f"<h4>Installation</h4><pre>{esc(p.install_hint)}</pre>"
-                 + muted("Shown for reference. WIFI Center does not install packages until the privileged helper "
-                         "(Phase 8) is in place."))
+                 + muted("Shown for reference: WIFI Center never installs tools silently. Packages can be installed from "
+                         "the Package Manager (through the privileged helper, with a confirmation), or run the command yourself."))
         recent = self.app.db.query("SELECT name, status, started_at FROM operations WHERE tool_id = ? "
                                    "ORDER BY id DESC LIMIT 3", (p.id,))
         h.append("<h4>Recent activity</h4>" + ("<br>".join(

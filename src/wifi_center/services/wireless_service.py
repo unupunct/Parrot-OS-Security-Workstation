@@ -232,6 +232,20 @@ class WirelessService:
                               (limit,))
         return [(r["ts"], r["n"]) for r in rows][::-1]
 
+    def scans(self, limit: int = 60) -> list[dict]:
+        """The most recent scans as [{ts, aps: [{id, ssid, bssid, signal_dbm, frequency_mhz, channel}]}], oldest first."""
+        rows = self._db.query(
+            "SELECT s.ts, s.observation_id AS id, s.signal_dbm, s.frequency_mhz, s.channel, o.ssid, o.bssid "
+            "FROM wireless_samples s JOIN wireless_observations o ON o.id = s.observation_id "
+            "WHERE s.ts IN (SELECT ts FROM (SELECT DISTINCT ts FROM wireless_samples ORDER BY ts DESC LIMIT ?)) ORDER BY s.ts", (limit,))
+        out: list[dict] = []
+        for r in rows:
+            if not out or out[-1]["ts"] != r["ts"]:
+                out.append({"ts": r["ts"], "aps": []})
+            out[-1]["aps"].append({"id": r["id"], "ssid": r["ssid"], "bssid": r["bssid"], "signal_dbm": r["signal_dbm"],
+                                   "frequency_mhz": r["frequency_mhz"], "channel": r["channel"]})
+        return out
+
     def latest_scan_ts(self) -> str | None:
         r = self._db.query_one("SELECT MAX(ts) t FROM wireless_samples")
         return r["t"] if r else None

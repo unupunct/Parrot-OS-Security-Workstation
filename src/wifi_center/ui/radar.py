@@ -26,6 +26,14 @@ SWEEP_DEG_PER_SEC = 72.0
 TRAIL_DEG = 85.0
 MIN_GLOW = 0.38          # how bright a blip stays between sweeps
 LEGEND = (("Open", T.warning), ("WEP", T.danger), ("WPA / WPA2", T.green), ("WPA3 / other", T.cyan))
+BAND_COLORS = {"2.4 GHz": T.green, "5 GHz": "#3B9BFF", "6 GHz": "#B07CFF"}
+BAND_LEGEND = (("2.4 GHz", BAND_COLORS["2.4 GHz"]), ("5 GHz", BAND_COLORS["5 GHz"]), ("6 GHz", BAND_COLORS["6 GHz"]),
+               ("Open network (ring)", T.warning))
+
+
+def band_of(ap: dict) -> str:
+    f = ap.get("frequency_mhz") or 0
+    return ap.get("band") or ("2.4 GHz" if 0 < f < 3000 else "5 GHz" if 3000 <= f < 5925 else "6 GHz" if f >= 5925 else "")
 
 
 def signal_radius(dbm: float) -> float:
@@ -82,6 +90,7 @@ class RadarWidget(Animated, QWidget):
         self._static: QPixmap | None = None
         self._static_key: tuple = ()
         self.animation_paused = False
+        self.color_mode = "security"           # "security" (colour = encryption) or "band" (colour = 2.4 / 5 / 6 GHz)
 
     # ---- data ----
     def set_observations(self, rows: list[dict]) -> None:
@@ -96,6 +105,14 @@ class RadarWidget(Animated, QWidget):
 
     def count(self) -> int:
         return len(self._aps)
+
+    def _ap_color(self, ap: dict) -> str:
+        if self.color_mode == "band":
+            return BAND_COLORS.get(band_of(ap), T.text_muted)
+        return enc_color(ap.get("encryption"))
+
+    def _is_open(self, ap: dict) -> bool:
+        return (ap.get("encryption") or "").lower() in ("", "open")
 
     # ---- geometry ----
     def _geom(self) -> tuple[QPointF, float]:
@@ -255,7 +272,7 @@ class RadarWidget(Animated, QWidget):
         placed: list[QRectF] = []
         for ap in sorted(self._aps, key=lambda a: a["signal_dbm"]):          # strong ones are drawn last (on top)
             pt = self.marker_pos(ap)
-            col = enc_color(ap.get("encryption"))
+            col = self._ap_color(ap)
             glow = glow_factor(self._angle, display_angle(ap)) if animate else 0.8
             sel = ap["id"] == self._selected
             hov = ap["id"] == self._hover
@@ -283,6 +300,10 @@ class RadarWidget(Animated, QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(qcolor(col, glow))
             p.drawEllipse(pt, size, size)
+            if self.color_mode == "band" and self._is_open(ap):
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.setPen(QPen(qcolor(T.warning, 0.9), 1.6))
+                p.drawEllipse(pt, size + 4, size + 4)
             if sel:
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.setPen(QPen(qcolor(T.soft_green), 1.6, Qt.PenStyle.DashLine))
@@ -328,7 +349,7 @@ class RadarWidget(Animated, QWidget):
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No observations yet\nRun a scan")
         x = 8.0
         y = self.height() - 22.0
-        for name, color in LEGEND:
+        for name, color in (BAND_LEGEND if self.color_mode == "band" else LEGEND):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(qcolor(color))
             p.drawEllipse(QPointF(x + 4, y + 5), 3.5, 3.5)
@@ -338,5 +359,5 @@ class RadarWidget(Animated, QWidget):
             x += 11 + w + 8
         p.setPen(qcolor(T.text_muted))
         p.drawText(QRectF(8, self.height() - 12, self.width() - 16, 11), Qt.AlignmentFlag.AlignLeft,
-                   "Distance = signal strength · angle = channel (a Wi-Fi scan has no direction) · hollow = hidden SSID")
+                   "Visual signal map, not a locator: distance = signal strength, angle = channel (a Wi-Fi scan has no direction) · hollow = hidden SSID")
         p.end()
