@@ -33,6 +33,45 @@ class BluezAPI(Protocol):
 
     def call(self, path: str, iface: str, method: str, args: tuple = (), timeout: float = 30.0) -> Any: ...
 
+    def watch(self, path_prefix: str, callback) -> Any:
+        """Call callback(path, interface, changed_properties) for every BlueZ property change under path_prefix. Returns a token."""
+
+    def unwatch(self, token: Any) -> None: ...
+
+    def register_agent(self, handler, capability: str = "KeyboardDisplay") -> Any:
+        """Export a pairing agent (see AgentHandler) and make it the default agent. Returns a token for unregister_agent."""
+
+    def unregister_agent(self, token: Any) -> None: ...
+
+
+class AgentHandler(Protocol):
+    """What the pairing agent asks the user. Every method may block (it runs on BlueZ's request thread) and must answer within the
+    pairing timeout; returning None / False refuses. Keys and PINs are never stored or logged by this layer."""
+
+    def request_confirmation(self, address: str, passkey: int) -> bool: ...
+
+    def request_pin(self, address: str) -> str | None: ...
+
+    def request_passkey(self, address: str) -> int | None: ...
+
+    def display_passkey(self, address: str, passkey: int) -> None: ...
+
+    def display_pin(self, address: str, pin: str) -> None: ...
+
+    def authorize_service(self, address: str, uuid: str) -> bool: ...
+
+    def cancel(self) -> None: ...
+
+
+AGENT_PATH = "/org/wificenter/agent"
+AGENT_IFACE = "org.bluez.Agent1"
+
+
+def address_from_path(path: str) -> str:
+    """/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF -> AA:BB:CC:DD:EE:FF"""
+    tail = path.rsplit("/", 1)[-1]
+    return tail[4:].replace("_", ":") if tail.startswith("dev_") else ""
+
 
 def to_py(v: Any) -> Any:
     """dbus-python values -> plain Python (byte arrays become bytes)."""
@@ -127,6 +166,124 @@ class DBusBluez:
             self._bus = None
             return False
 
+    # ---- watchers and the pairing agent run on a private connection with its own GLib main loop in a daemon thread
+    def _loop(self):
+        import dbus
+        import dbus.mainloop.glib
+        from gi.repository import GLib
+        if getattr(self, "_glib", None) is None:
+            holder: dict = {}
+            ready = threading.Event()
+
+            def run() -> None:
+                try:
+                    dbus.mainloop.glib.threads_init()
+                    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+                    holder["bus"] = dbus.SystemBus(private=True)
+                    holder["loop"] = GLib.MainLoop()
+                except Exception as e:
+                    holder["error"] = e
+                ready.set()
+                if "loop" in holder:
+                    holder["loop"].run()
+            threading.Thread(target=run, name="bluez-glib", daemon=True).start()
+            ready.wait(5)
+            if "bus" not in holder:
+                raise BluetoothError(f"cannot start the Bluetooth event loop: {holder.get('error')}")
+            self._glib = holder
+        return self._glib
+
+    def watch(self, path_prefix: str, callback) -> Any:
+        glib = self._loop()
+
+        def on_change(iface, changed, invalidated, path=None):
+            if str(path).startswith(path_prefix):
+                callback(str(path), str(iface), {str(k): to_py(v) for k, v in changed.items()})
+        return glib["bus"].add_signal_receiver(on_change, "PropertiesChanged", PROPS, BLUEZ, path_keyword="path")
+
+    def unwatch(self, token: Any) -> None:
+        try:
+            token.remove()
+        except Exception:
+            pass
+
+    def register_agent(self, handler, capability: str = "KeyboardDisplay") -> Any:
+        import dbus
+        import dbus.service
+        glib = self._loop()
+        bus = glib["bus"]
+
+        class Rejected(dbus.DBusException):
+            _dbus_error_name = "org.bluez.Error.Rejected"
+
+        class Agent(dbus.service.Object):
+            @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+            def Release(self):                                           # noqa: N802
+                handler.cancel()
+
+            @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="s")
+            def RequestPinCode(self, device):                            # noqa: N802
+                pin = handler.request_pin(address_from_path(str(device)))
+                if pin is None:
+                    raise Rejected("rejected")
+                return pin
+
+            @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
+            def DisplayPinCode(self, device, pincode):                   # noqa: N802
+                handler.display_pin(address_from_path(str(device)), str(pincode))
+
+            @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="u")
+            def RequestPasskey(self, device):                            # noqa: N802
+                v = handler.request_passkey(address_from_path(str(device)))
+                if v is None:
+                    raise Rejected("rejected")
+                return dbus.UInt32(v)
+
+            @dbus.service.method(AGENT_IFACE, in_signature="ouq", out_signature="")
+            def DisplayPasskey(self, device, passkey, entered):          # noqa: N802
+                handler.display_passkey(address_from_path(str(device)), int(passkey))
+
+            @dbus.service.method(AGENT_IFACE, in_signature="ou", out_signature="")
+            def RequestConfirmation(self, device, passkey):              # noqa: N802
+                if not handler.request_confirmation(address_from_path(str(device)), int(passkey)):
+                    raise Rejected("rejected")
+
+            @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="")
+            def RequestAuthorization(self, device):                      # noqa: N802
+                if not handler.request_confirmation(address_from_path(str(device)), 0):
+                    raise Rejected("rejected")
+
+            @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
+            def AuthorizeService(self, device, uuid):                    # noqa: N802
+                if not handler.authorize_service(address_from_path(str(device)), str(uuid)):
+                    raise Rejected("rejected")
+
+            @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+            def Cancel(self):                                            # noqa: N802
+                handler.cancel()
+
+        agent = Agent(bus, AGENT_PATH)
+        mgr = dbus.Interface(bus.get_object(BLUEZ, "/org/bluez"), "org.bluez.AgentManager1")
+        try:
+            mgr.RegisterAgent(dbus.ObjectPath(AGENT_PATH), capability)
+            mgr.RequestDefaultAgent(dbus.ObjectPath(AGENT_PATH))
+        except dbus.DBusException as e:
+            agent.remove_from_connection()
+            raise self._error(e) from None
+        return (agent, mgr)
+
+    def unregister_agent(self, token: Any) -> None:
+        import dbus
+        agent, mgr = token
+        try:
+            mgr.UnregisterAgent(dbus.ObjectPath(AGENT_PATH))
+        except Exception:
+            pass
+        try:
+            agent.remove_from_connection()
+        except Exception:
+            pass
+
     def _error(self, e: Exception) -> BluetoothError:
         name = e.get_dbus_name() if hasattr(e, "get_dbus_name") else ""
         msg = e.get_dbus_message() if hasattr(e, "get_dbus_message") else str(e)
@@ -185,6 +342,12 @@ class UnavailableBluez:
         return self.objects()
 
     set_prop = call = get_prop
+
+    def watch(self, *a, **k):
+        return self.objects()
+
+    unwatch = unregister_agent = lambda self, *a, **k: None
+    register_agent = watch
 
 
 def make_api() -> BluezAPI | None:

@@ -1,7 +1,7 @@
 """Bluetooth Lab: a Bluetooth diagnostics and device-management workstation built on BlueZ's D-Bus API.
 
 The page is a shell with eleven sections. Dashboard and Device Scanner live here; Signal Monitor, Adapter Diagnostics and Device
-Inventory are in bluetooth_lab_tools.py; the sections that act on a device (manager, inspector, BLE explorer, auditor) and the
+Inventory are in bluetooth_lab_tools.py; the sections that act on a device (manager, inspector, BLE explorer, auditor) are in bluetooth_lab_stage2.py; the
 packet analyzer / reports arrive in the next stages and say so. If BlueZ cannot be reached over D-Bus the scanner falls back to the
 original bluetoothctl scanner (still part of the page)."""
 from __future__ import annotations
@@ -32,11 +32,7 @@ esc = html.escape
 SECTIONS = (("dashboard", "Dashboard"), ("scanner", "Device Scanner"), ("manager", "Device Manager"), ("inspector", "Device Inspector"),
             ("ble", "BLE Explorer"), ("auditor", "Security Auditor"), ("signal", "Signal Monitor"), ("packets", "Packet Analyzer"),
             ("diag", "Adapter Diagnostics"), ("inventory", "Device Inventory"), ("reports", "Reports"))
-NEXT_STAGE = {"manager": "Pair, connect, trust and remove devices through BlueZ, with confirmations.",
-              "inspector": "Properties, profiles and services of one device, plus its connection history.",
-              "ble": "Browse GATT services and characteristics, read values, subscribe to notifications; writes only with explicit confirmation.",
-              "auditor": "Evidence-based security findings for devices you own or are authorised to test.",
-              "packets": "HCI capture with btmon and decoding with tshark (needs a privileged-helper operation).",
+NEXT_STAGE = {"packets": "HCI capture with btmon and decoding with tshark (needs a privileged-helper operation).",
               "reports": "HTML and PDF reports from the inventory and the auditor's findings."}
 QUALITY_COLOR = {"good": T.green, "fair": T.warning, "weak": T.danger, "unknown": T.text_muted}
 
@@ -140,8 +136,10 @@ class BluetoothLabPage(QWidget):
         self.signal = SignalMonitorView(self)
         self.diag = AdapterDiagnosticsView(self)
         self.inventory = InventoryView(self)
+        from .bluetooth_lab_stage2 import AuditorView, BLEExplorerView, DeviceManagerView, InspectorView
         self.views: dict[str, QWidget] = {"dashboard": self.dashboard, "scanner": self.scanner, "signal": self.signal, "diag": self.diag,
-                                          "inventory": self.inventory}
+                                          "inventory": self.inventory, "manager": DeviceManagerView(self), "inspector": InspectorView(self),
+                                          "ble": BLEExplorerView(self), "auditor": AuditorView(self)}
         for key, _ in SECTIONS:
             w = self.views.get(key) or self._next_stage(key)
             self.views[key] = w

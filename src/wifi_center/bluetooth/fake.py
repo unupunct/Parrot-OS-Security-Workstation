@@ -23,7 +23,10 @@ class FakeBluez:
         self.reveal: list[tuple[int, str, dict]] = []               # (tick when it appears, adapter path, device props)
         self.rssi_script: dict[str, Callable[[int], int | None]] = {}   # address -> tick -> rssi (None removes the property)
         self.tick = 0
-        self.values: dict[str, bytes] = {}                          # characteristic path -> value
+        self.values: dict[str, bytes] = {}
+        self.watchers: list[tuple] = []
+        self.agent = None
+        self.pair_script: Callable[[str, Any], None] | None = None     # runs during Pair(): drive the agent like BlueZ would                          # characteristic path -> value
 
     # ---- building the scene
     def add_adapter(self, name: str = "hci0", address: str = "AA:00:00:00:00:01", powered: bool = True, **extra) -> str:
@@ -66,7 +69,7 @@ class FakeBluez:
         out: dict[str, dict[str, dict[str, Any]]] = {p: {ADAPTER: dict(a)} for p, a in self.adapters.items()}
         out.update({p: {DEVICE: dict(d)} for p, d in self.devices.items()})
         for p, ifs in self.gatt.items():
-            out[p] = {i: dict(v) for i, v in ifs.items()}
+            out.setdefault(p, {}).update({i: dict(v) for i, v in ifs.items()})      # extra interfaces (Battery1...) on an existing object
         return out
 
     def get_prop(self, path: str, iface: str, name: str) -> Any:
@@ -107,6 +110,8 @@ class FakeBluez:
         if iface == DEVICE:
             d = self.devices[path]
             if method == "Pair":
+                if self.pair_script:
+                    self.pair_script(path, self.agent)           # may raise BluetoothError to simulate a rejection or timeout
                 d["Paired"] = d["Bonded"] = True
             elif method == "Connect":
                 d["Connected"] = True
@@ -126,6 +131,35 @@ class FakeBluez:
         if iface == GATT_DESC and method == "ReadValue":
             return self.values.get(path, b"")
         return None
+
+    # ---- watchers and agent
+    def watch(self, path_prefix: str, callback) -> Any:
+        token = (path_prefix, callback)
+        self.watchers.append(token)
+        return token
+
+    def unwatch(self, token: Any) -> None:
+        if token in self.watchers:
+            self.watchers.remove(token)
+
+    def emit(self, path: str, iface: str, changed: dict) -> None:
+        for prefix, cb in list(self.watchers):
+            if path.startswith(prefix):
+                cb(path, iface, dict(changed))
+
+    def push_value(self, char_path: str, value: bytes) -> None:
+        """A notification arriving from the device."""
+        self.values[char_path] = value
+        self.emit(char_path, GATT_CHAR, {"Value": value})
+
+    def register_agent(self, handler, capability: str = "KeyboardDisplay") -> Any:
+        self.agent = handler
+        self.calls.append(("agent", "register", capability))
+        return ("agent", handler)
+
+    def unregister_agent(self, token: Any) -> None:
+        self.agent = None
+        self.calls.append(("agent", "unregister"))
 
     # ---- GATT scene helper
     def add_gatt(self, device: str, services: dict[str, dict[str, dict]]) -> None:

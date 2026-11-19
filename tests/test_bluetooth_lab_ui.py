@@ -9,6 +9,7 @@ from wifi_center.bluetooth.fake import FakeBluez
 from wifi_center.bluetooth.scanner import BluetoothScanner
 from wifi_center.bluetooth.signal_monitor import BluetoothSignalMonitor
 from wifi_center.ui.pages import bluetooth_lab as bl
+from wifi_center.ui.pages import bluetooth_lab_stage2 as bt_stage2
 from wifi_center.ui.pages import bluetooth_lab_tools as bt_tools
 
 
@@ -52,7 +53,15 @@ def lab(qapp, controller, tmp_path, monkeypatch):
     controller.btdiag = BluetoothDiagnostics(bt, mgr, sc, lambda a, t: __import__("types").SimpleNamespace(ok=True, stdout="active"),
                                              which=lambda n: "/usr/bin/" + n, sleep=lambda s: None)
     confirms = []
-    for mod in (bl, bt_tools):
+    from wifi_center.bluetooth.auditor import BluetoothSecurityAuditor
+    from wifi_center.bluetooth.ble import BLEExplorer
+    from wifi_center.bluetooth.devices import BluetoothDeviceManager
+    from wifi_center.bluetooth.inspector import BluetoothDeviceInspector
+    controller.btdevices = BluetoothDeviceManager(bt, controller.btinventory, controller.audit.record)
+    controller.btinspector = BluetoothDeviceInspector(bt, controller.btinventory)
+    controller.btble = BLEExplorer(bt, controller.btinventory, controller.audit.record)
+    controller.btauditor = BluetoothSecurityAuditor(bt, controller.db, controller.btinventory, controller.btdevices, controller.btble)
+    for mod in (bl, bt_tools, bt_stage2):
         monkeypatch.setattr(mod, "confirm_dialog", lambda *a, **k: (confirms.append(a[1]), True)[1])
     page = bl.BluetoothLabPage(controller)
     assert wait(qapp, lambda: len(page.state.adapters) == 1)
@@ -64,7 +73,7 @@ def test_navigation_lists_all_eleven_sections_and_marks_what_is_not_built_yet(qa
     names = [lab.nav.item(i).text() for i in range(lab.nav.count())]
     assert [n.split("   ")[0] for n in names] == ["Dashboard", "Device Scanner", "Device Manager", "Device Inspector", "BLE Explorer", "Security Auditor",
                                                 "Signal Monitor", "Packet Analyzer", "Adapter Diagnostics", "Device Inventory", "Reports"]
-    assert [i for i, n in enumerate(names) if "next stage" in n] == [2, 3, 4, 5, 7, 10]
+    assert [i for i, n in enumerate(names) if "next stage" in n] == [7, 10]
     assert lab.stack.count() == 11
 
 
@@ -187,3 +196,91 @@ def test_unavailable_bluez_degrades_gracefully(qapp, controller):
     wait(qapp, lambda: True, 0.5)
     assert page.state.adapters == [] and "No Bluetooth controller" in page.dashboard.c_adapter.sub.text()
     assert not page.dashboard.b_both.isEnabled() and page.scanner.fallback is not None            # the original scanner is still there
+
+
+# ---------------------------------------------------------------------------- stage 2 sections (against the simulated BlueZ)
+SPEAKER = "AA:BB:CC:00:00:01"
+
+
+def load_devices(qapp, lab, view):
+    view.refresh_devices()
+    assert wait(qapp, lambda: view.picker.count() > 0)
+    i = view.picker.findData(SPEAKER)
+    view.picker.setCurrentIndex(i)
+    qapp.processEvents()
+
+
+def remember_speaker(lab):
+    from wifi_center.bluetooth.models import device_from_props
+    from wifi_center.bluetooth.scanner import ScanResult
+    path = next(p for p, d in lab.bt.devices.items() if d["Address"] == SPEAKER)
+    lab.app.btinventory.record_scan(ScanResult(adapter=lab.path, mode="both", started_at="2026-01-01T00:00:00+00:00", duration_s=1,
+                                               devices=[device_from_props(path, lab.bt.devices[path])]))
+    return path
+
+
+def test_manager_actions_ask_first_and_pairing_prompts_reach_the_ui(qapp, lab):
+    v = lab.views["manager"]
+    load_devices(qapp, lab, v)
+    path = next(p for p, d in lab.bt.devices.items() if d["Address"] == SPEAKER)
+    assert v.buttons["pair"].isEnabled() and not v.buttons["disconnect"].isEnabled()
+    lab.bt.pair_script = lambda p, agent: agent.request_confirmation(SPEAKER, 424242)
+    n = len(lab.confirms)
+    v.act("pair")
+    assert wait(qapp, lambda: lab.bt.devices[path]["Paired"])
+    assert lab.confirms[n:n + 2] == ["Pair", "Pairing request"]                          # the action confirmation, then the passkey prompt from the agent
+    assert wait(qapp, lambda: v.buttons["connect"].isEnabled() and not v.buttons["pair"].isEnabled())
+    v.act("connect")
+    assert wait(qapp, lambda: lab.bt.devices[path]["Connected"])
+    assert wait(qapp, lambda: v.buttons["disconnect"].isEnabled() and not v.buttons["remove"].isEnabled())      # no removal while connected
+    assert [c for c in lab.confirms if c in ("Connect",)] == ["Connect"]
+
+
+def test_inspector_and_ble_explorer_read_only_until_authorised(qapp, lab):
+    path = remember_speaker(lab)
+    lab.bt.devices[path].update(Connected=True, ServicesResolved=True)
+    lab.bt.add_gatt(path, {"0000180f-0000-1000-8000-00805f9b34fb": {"00002a19-0000-1000-8000-00805f9b34fb": {"flags": ["read", "notify", "write"], "value": bytes([64])}}})
+    ins = lab.views["inspector"]
+    load_devices(qapp, lab, ins)
+    assert wait(qapp, lambda: "Battery" in ins.view.toPlainText())
+    v = lab.views["ble"]
+    load_devices(qapp, lab, v)
+    v.load()
+    assert wait(qapp, lambda: v.tree.topLevelItemCount() == 1)
+    v.tree.topLevelItem(0).child(0).setSelected(True)
+    qapp.processEvents()
+    assert v.b_read.isEnabled() and v.b_sub.isEnabled()
+    assert not v.b_write.isEnabled() and "authorised" in v.wnote.text()                      # writing is locked for an unauthorised device
+    v.read()
+    assert wait(qapp, lambda: "64 %" in v.value.toPlainText())
+    v.toggle_sub()
+    lab.bt.push_value(path + "/service0000/char0000", bytes([63]))
+    assert wait(qapp, lambda: "63 %" in v.value.toPlainText())
+    v.toggle_sub()
+    lab.app.btinventory.set_info(SPEAKER, authorized=True)
+    v._buttons()
+    assert v.b_write.isEnabled()
+    v.hex.setText("zz")
+    v.write()
+    assert not any(len(c) > 2 and c[2] == "WriteValue" for c in lab.bt.calls)               # invalid input never reaches the device
+    v.hex.setText("01 02")
+    v.write()
+    assert wait(qapp, lambda: lab.bt.values[path + "/service0000/char0000"] == b"\x01\x02")
+
+
+def test_auditor_is_gated_by_authorisation_and_explains_findings(qapp, lab):
+    path = remember_speaker(lab)
+    v = lab.views["auditor"]
+    load_devices(qapp, lab, v)
+    assert not v.b_run.isEnabled() and "authorised" in v.gate.text()
+    lab.app.btinventory.set_info(SPEAKER, authorized=True)
+    v._picked()
+    assert v.b_run.isEnabled()
+    v.run()
+    assert wait(qapp, lambda: v.table.rowCount() > 0)
+    v.table.selectRow(0)
+    qapp.processEvents()
+    text = v.detail.toPlainText()
+    assert "Evidence" in text and "What to do" in text
+    assert not any(len(c) > 2 and c[2] in ("Connect", "Pair", "WriteValue") for c in lab.bt.calls)
+    assert v.history.count() == 1

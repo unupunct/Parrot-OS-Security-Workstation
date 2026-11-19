@@ -89,6 +89,7 @@ class AppController:
         self.btinventory = BluetoothInventory(self.db)
         self.btmonitor = BluetoothSignalMonitor(self.btscanner)
         self.btdiag = BluetoothDiagnostics(_bt, self.btadapters, self.btscanner)
+        self._bt = _bt
         from ..services.package_tools import PackageTools
         self.pkgtools = PackageTools(self.apt)
         from ..services.docs_service import DocsService
@@ -102,6 +103,14 @@ class AppController:
         self.cleanup = CleanupService(self.maintenance, self.apt, self.privileged,
                                       app_log_dir=self.paths.log_dir)
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
+        from ..bluetooth.auditor import BluetoothSecurityAuditor
+        from ..bluetooth.ble import BLEExplorer
+        from ..bluetooth.devices import BluetoothDeviceManager
+        from ..bluetooth.inspector import BluetoothDeviceInspector
+        self.btdevices = BluetoothDeviceManager(self._bt, self.btinventory, self.audit.record)
+        self.btinspector = BluetoothDeviceInspector(self._bt, self.btinventory)
+        self.btble = BLEExplorer(self._bt, self.btinventory, self.audit.record)
+        self.btauditor = BluetoothSecurityAuditor(self._bt, self.db, self.btinventory, self.btdevices, self.btble, self.audit.record)
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)
         self.audit.record("app.start")
