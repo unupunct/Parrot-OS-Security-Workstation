@@ -52,10 +52,16 @@ else
   command -v python3 >/dev/null || die "python3 is required"
   if [ -n "$VERSION" ]; then api="https://api.github.com/repos/$REPO/releases/tags/v${VERSION#v}"; else api="https://api.github.com/repos/$REPO/releases/latest"; fi
   say "Looking up the release: $api"
-  curl -fsSL -H 'Accept: application/vnd.github+json' "$api" -o "$TMP/release.json" || die "could not read the release (is it published? network?)"
+  if ! curl -fsSL -H 'Accept: application/vnd.github+json' "$api" -o "$TMP/release.json"; then
+    # "latest" ignores pre-releases (release candidates): fall back to the newest release of any kind
+    [ -z "$VERSION" ] || die "release v${VERSION#v} not found"
+    curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPO/releases?per_page=1" -o "$TMP/release.json" || die "could not read the releases (is one published? network?)"
+  fi
   urls="$(python3 - "$TMP/release.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))
+if isinstance(r, list):
+    r = r[0] if r else {}
 for a in r.get("assets", []):
     n = a["name"]
     if (n.startswith("wifi-center_") and n.endswith("_all.deb")) or n == "SHA256SUMS":
