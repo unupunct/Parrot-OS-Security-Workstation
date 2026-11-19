@@ -256,7 +256,8 @@ class OsintWorkspacePage(QWidget):
             self.table.setCellWidget(r, 4, combo)
             btn = QPushButton("Open")
             btn.setMinimumWidth(72)
-            btn.setEnabled(bool(self._term) or not d["supports_term"])
+            btn.setToolTip("Open a ready-made search for your term" if self._term and d["supports_term"] else
+                           "Open this site (type a term above to open a ready-made search)" if d["supports_term"] else "Open this tool")
             btn.clicked.connect(lambda _=False, row=r: self._open(row))
             self.table.setCellWidget(r, 5, btn)
         self._select_row()
@@ -293,18 +294,28 @@ class OsintWorkspacePage(QWidget):
         d = self._row_dict(row)
         if not d:
             return
+        note, searched = "", False
         try:
-            url = osv.build_url(d, self._term, self._kind) if d["supports_term"] else d["url_template"]
+            if not d["supports_term"]:
+                url, searched = d["url_template"], bool(self._term)
+            elif self._term:
+                url, searched = osv.build_url(d, self._term, self._kind), True
+            else:
+                url = osv.site_home(d)
+                note = " No search term yet, so its home page was opened; type a term above to open a ready-made search."
         except ValidationError as e:
-            self.msg.setText(f"<span style='color:{T.danger}'>{esc(str(e))}</span>")
-            return
-        note = ""
+            try:                                    # this site cannot take that kind of term: open it anyway, say why
+                url = osv.site_home(d)
+                note = f" {esc(str(e))}; its home page was opened instead."
+            except ValidationError:
+                self.msg.setText(f"<span style='color:{T.danger}'>{esc(str(e))}</span>")
+                return
         if not d["supports_term"] and self._term:
             QGuiApplication.clipboard().setText(self._term)
             note = " The search term was copied to your clipboard."
         QDesktopServices.openUrl(QUrl(url))                       # explicit user action, in the user's browser
         pid = self.bar.project_id()
-        if pid and self._term and not self.app.osint.results_for(pid, self._term).get(d["slug"]):
+        if pid and self._term and searched and not self.app.osint.results_for(pid, self._term).get(d["slug"]):
             self.app.osint.set_result(pid, self._term, d["slug"], "inconclusive", url)   # opened, nothing concluded yet
             self._populate()
         self.app.audit.record("osint.open", resource=d["slug"], kind=self._kind or "")

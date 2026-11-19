@@ -65,10 +65,18 @@ def test_open_builds_safe_url_records_and_warns(page, opened):
     assert any(e["event"] == "osint.open" for e in page.app.audit.tail(5))
 
 
-def test_open_needs_a_term_for_searchable_resources(page):
-    btn = page.table.cellWidget(row_of(page, "github"), 5)
-    assert not btn.isEnabled()
-    assert page.table.cellWidget(row_of(page, "whatsmyname"), 5).isEnabled()      # term-less tools can be opened anyway
+def test_every_open_button_works_with_or_without_a_term(page, monkeypatch):
+    opened = []
+    monkeypatch.setattr(op.QDesktopServices, "openUrl", staticmethod(lambda u: opened.append(u.toString()) or True))
+    assert all(page.table.cellWidget(r, 5).isEnabled() for r in range(page.table.rowCount()))
+    page._open(row_of(page, "github"))                                              # searchable resource, no term typed yet
+    assert opened[-1] == "https://github.com/" and "home page was opened" in page.msg.text()
+    page.term.setText("alice")
+    page.search()
+    page._open(row_of(page, "github"))
+    assert opened[-1] == "https://github.com/alice"                                 # with a term: the ready-made search
+    from wifi_center.services import osint_service as osv
+    assert all(osv.site_home(r).startswith("https://") for r in page.app.osint.resources())     # every catalogue entry has a home page
 
 
 def test_recording_results_and_five_state_vocabulary(page):

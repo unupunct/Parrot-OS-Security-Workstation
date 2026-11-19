@@ -81,6 +81,15 @@ def validate_term(term: str, kind: str) -> str:
     raise ValidationError(f"unknown input type: {kind}")
 
 
+def site_home(resource: Resource | dict) -> str:
+    """The resource's home page (scheme + host of its template), for opening it without a search term."""
+    r = _as_resource(resource)
+    u = urlparse(r.url_template.replace("{term_md5}", "x").replace("{term}", "x"))
+    if u.scheme != "https" or not u.hostname:
+        raise ValidationError("this resource has no valid https address")
+    return f"https://{u.netloc}/"
+
+
 def build_url(resource: Resource | dict, term: str, kind: str | None = None) -> str:
     """The URL to open for `term` on `resource`; raises ValidationError if the pairing is not allowed."""
     r = _as_resource(resource)
