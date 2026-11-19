@@ -30,6 +30,8 @@ from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.osint_pages import OsintWorkspacePage
 from .pages.planned import PlannedPage
+from .pages.lan_scanner_page import LanScannerPage
+from .pages.sysinfo_page import SystemInfoPage as SpeccyInfoPage
 from .pages.root_access_page import PrivilegeMonitor, RootAccessPage
 from .pages.resource_pages import DocumentationPage, ResourceLibraryPage
 from .pages.settings_page import SettingsPage
@@ -174,12 +176,13 @@ class MainWindow(QMainWindow):
             "settings_permissions": lambda: RootAccessPage(self.app, lambda a: self.topbar.set_privileged(a, "Privileged" if a else "Helper ready")),
             "activity": lambda: ActivityPage(self.app, self.open_operation),
             "net_discovery": lambda: NetworkDiscoveryPage(self.app),
+            "lan_scanner": lambda: LanScannerPage(self.app),
             "net_mapping": lambda: NetworkMappingPage(self.app),
             "assessment": lambda: AssessmentPage(self.app),
             "web_security": self._make_web_security,
             "password_audit": lambda: PasswordAuditPage(self.app),
             "system_hw": lambda: ParrotOverviewPage(self.app, self.sidebar.select_page),
-            "sys_info": lambda: SystemInfoPage(self.app),
+            "sys_info": lambda: SpeccyInfoPage(self.app),
             "sys_updates": lambda: SystemUpdatesPage(self.app),
             "sw_updates": lambda: SoftwareUpdatesPage(self.app),
             "packages": lambda: PackageManagerPage(self.app),

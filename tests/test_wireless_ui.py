@@ -134,3 +134,36 @@ def test_adapter_page_handles_unsupported_platform(qapp, controller):
     page = AdapterPage(controller)
     wait(500)
     assert page.details.toPlainText()  # message or details, never empty/crashed
+
+
+def test_analyzer_helpers_and_views(qapp, controller):
+    from wifi_center.ui.pages import spectrum_page as sp
+
+    assert sp.channel_x(2412, 1, "2.4 GHz") == 1 and sp.channel_x(2484, 14, "2.4 GHz") == 14 and sp.channel_x(5180, 36, "5 GHz") == 36
+    xs, ys = sp.arch(6, -50, 2.2)
+    assert min(xs) < 6 < max(xs) and ys[0] == sp.FLOOR_DBM == ys[-1] and max(ys) == -50 and ys.index(max(ys)) == len(ys) // 2
+    assert [sp.signal_level(x) for x in (-50, -70, -85, None)] == ["good", "fair", "weak", "none"]
+    # congestion: a strong network on channel 6 loads 6 and its neighbours, not 1 or 11
+    aps = [(6.0, -40.0), (6.0, -60.0)]
+    assert sp.congestion(6, aps) > sp.congestion(4, aps) > sp.congestion(1, aps) == 0 == sp.congestion(11, aps)
+    ranked = sp.best_channels("2.4 GHz", aps)
+    assert [c for c, _ in ranked][:2] in ([1, 11], [11, 1]) and ranked[-1][0] == 6
+    assert sp.best_channels("6 GHz", aps) == []
+
+    controller.wireless.record(APS)
+    page = sp.SpectrumPage(controller)
+    assert page.list.count() == 2 and page.band.currentText() == "2.4 GHz"
+    assert len(page.graph.getPlotItem().listDataItems()) == 2                      # one arch per network
+    assert "Least congested channel" in page.rec.text()
+    page.list.setCurrentRow(0)
+    assert page._selected is not None
+    page.band.setCurrentText("5 GHz")
+    assert page.list.count() == 1 and "1 networks" in page.info.text()
+    page.chan_filter.setCurrentIndex(page.chan_filter.findData(36))
+    assert page.list.count() == 1
+
+
+def test_5ghz_graph_uses_equal_channel_slots():
+    from wifi_center.ui.pages import spectrum_page as sp
+    assert sp.slot_x(36) == 0 and sp.slot_x(40) == 1 and sp.slot_x(64) == 7 and sp.slot_x(100) == 8      # no empty gap drawn
+    assert sp.slot_x(30) == 0 and sp.slot_x(200) == len(sp.CHANNELS_5) - 1 and 0 < sp.slot_x(42) - sp.slot_x(40) < 1

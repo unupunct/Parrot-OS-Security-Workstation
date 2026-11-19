@@ -74,6 +74,11 @@ class AppController:
         self.apt = AptService()
         self.packages = PackageService(self.apt)
         self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)
+        from ..services.hardware_info import HardwareInfoService
+        self.hwinfo = HardwareInfoService()
+        from ..services.lan_scanner import LanScanner
+        self.lan = LanScanner(self.wireless.oui, known=lambda: self.settings.get("lan.devices"),
+                              save_known=lambda d: self.settings.set("lan.devices", d))
         self.software = SoftwareSources(self.apt)
         self.cleanup = CleanupService(self.maintenance, self.apt, self.privileged,
                                       app_log_dir=self.paths.log_dir)

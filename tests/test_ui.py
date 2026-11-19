@@ -20,7 +20,7 @@ def test_navigation_ids_unique_and_complete():
     assert [c.title for c in NAVIGATION] == [
         "DASHBOARD", "WIRELESS", "NETWORK SECURITY", "INTELLIGENCE", "PARROT OS",
         "TOOL MANAGEMENT", "RESOURCES", "PROJECTS", "SETTINGS"]
-    assert len(ids) == 42
+    assert len(ids) == 43
 
 
 def test_every_page_can_be_opened(qapp, controller):

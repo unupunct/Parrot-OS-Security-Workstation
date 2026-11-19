@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import html
+import threading
 from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
                                QListWidgetItem, QPlainTextEdit, QSplitter, QTabWidget, QTableWidgetItem, QTextBrowser,
@@ -17,6 +18,7 @@ from ...services.apt_service import Transaction, risk_flags
 from ...services.package_service import PackageDetails
 from ...services.privileged_service import PrivilegedOp, run_privileged
 from ...services.system_service import SystemService
+from ...services.update_runner import UpdateError, plan_update, run_streaming
 from ...workers.task import run_in_background
 from ..charts import fmt_ts, make_table
 from ..design.components import GaugeWidget, LoadingIndicator, MatrixButton, MetricTile, Panel
@@ -445,6 +447,12 @@ class SystemUpdatesPage(QWidget):
 
 
 # ====================================================================== software updates
+class _UpdateBridge(QObject):
+    """Worker-thread output reaches the GUI thread through queued signals."""
+    line = Signal(str)
+    done = Signal(object, str)
+
+
 class SoftwareUpdatesPage(QWidget):
     def __init__(self, app: AppController) -> None:
         super().__init__()
@@ -473,17 +481,33 @@ class SoftwareUpdatesPage(QWidget):
         self.b_scan.clicked.connect(self.scan)
         self.b_check = MatrixButton("Check selected for updates…")
         self.b_check.clicked.connect(self.check_selected)
-        self.b_copy = MatrixButton("Copy update command")
+        self.b_update = MatrixButton("Update now…", "primary", "update")
+        self.b_update.clicked.connect(lambda: self._update(False))
+        self.b_update_item = MatrixButton("Update selected item…")
+        self.b_update_item.clicked.connect(lambda: self._update(True))
+        self.b_cancel = MatrixButton("Stop")
+        self.b_cancel.clicked.connect(self._stop)
+        self.b_cancel.setEnabled(False)
+        self.b_copy = MatrixButton("Copy command")
         self.b_copy.clicked.connect(self._copy_command)
-        for b in (self.b_scan, self.b_check, self.b_copy):
+        for b in (self.b_scan, self.b_check, self.b_update, self.b_update_item, self.b_cancel, self.b_copy):
             row.addWidget(b)
         row.addStretch(1)
         lay.addLayout(row)
         self.items = make_table(["Name", "Installed", "Available", "Status", "Detail"], stretch_col=4)
+        self.items.itemSelectionChanged.connect(self._select_item)
         lay.addWidget(self.items, 2)
+        self.term = TerminalView()
+        self.term.setMinimumHeight(150)
+        self.term.info("Update terminal: the command and its output appear here.")
+        lay.addWidget(self.term, 2)
         self.msg = QLabel("")
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
+        self._cancel: threading.Event | None = None
+        self._bridge = _UpdateBridge()
+        self._bridge.line.connect(self.term.appendPlainText)
+        self._bridge.done.connect(self._update_done)
         self.scan()
 
     def _checkouts(self) -> dict[str, str]:
@@ -535,6 +559,7 @@ class SoftwareUpdatesPage(QWidget):
                 self.items.setItem(r, c, item)
         self.b_check.setEnabled(bool(rep and rep.present and rep.key in ("flatpak", "snap", "git")))
         self.b_copy.setEnabled(bool(rep and rep.present))
+        self._sync_update_buttons()
         if rep:
             _say(self.msg, rep.note or rep.update_method)
 
@@ -559,6 +584,80 @@ class SoftwareUpdatesPage(QWidget):
             _say(self.msg, f"{new.title}: {new.updates} update(s) available." + (f" Error: {new.error}" if new.error else ""),
                  bool(new.error))
         run_in_background(fn, done, lambda e: (self.loader.stop(), _say(self.msg, f"Check failed: {e}", True)))
+
+    # ---------------------------------------------------------------- running updates in the app
+    def _sync_update_buttons(self) -> None:
+        rep, running = self._current(), self._cancel is not None
+        can = bool(rep and rep.present and rep.key in ("flatpak", "pipx", "git", "snap")) and not running
+        self.b_update.setEnabled(bool(rep and rep.present and rep.key == "apt") or can)
+        self.b_update.setText("Open System Updates" if rep and rep.key == "apt" else "Update now…")
+        item = self._current_item()
+        self.b_update_item.setEnabled(can and rep is not None and rep.key in ("pipx", "git") and item is not None)
+        self.b_cancel.setEnabled(running)
+
+    def _select_item(self) -> None:
+        self._sync_update_buttons()
+
+    def _current_item(self):
+        rep, r = self._current(), self.items.currentRow()
+        return rep.items[r] if rep and 0 <= r < len(rep.items) else None
+
+    def _update(self, one: bool) -> None:
+        rep = self._current()
+        if not rep or self._cancel is not None:
+            return
+        if rep.key == "apt":
+            nav = getattr(self.window(), "sidebar", None)
+            if nav is not None:
+                nav.select_page("sys_updates")
+            return
+        item = self._current_item() if one else None
+        try:
+            if rep.key == "git":
+                if item is None:
+                    _say(self.msg, "Select the tool checkout to update.", True)
+                    return
+                cmd = plan_update("git", item.detail, self._checkouts())
+            else:
+                cmd = plan_update(rep.key, item.name if (one and item) else "", self._checkouts())
+        except UpdateError as e:
+            _say(self.msg, str(e), True)
+            return
+        if not confirm_dialog(self, cmd.title, f"<p>This runs:</p><p><code>{esc(cmd.display)}</code></p><p>It contacts "
+                              f"<b>{esc(cmd.contacts)}</b> and installs the updates it finds. Nothing runs as root.</p>", "Run update"):
+            return
+        self._cancel = threading.Event()
+        cancel, key = self._cancel, rep.key
+        self.term.clear()
+        self.term.command(cmd.display)
+        self.loader.start()
+        self._sync_update_buttons()
+        self.app.audit.record("software.update", source=key, argv=list(cmd.argv))
+        title = cmd.title
+
+        def work() -> None:
+            code, status = run_streaming(cmd, self._bridge.line.emit, cancel)
+            self._bridge.done.emit((title, key), status if code is None or status != "succeeded" else "succeeded")
+
+        threading.Thread(target=work, name="software-update", daemon=True).start()
+
+    def _stop(self) -> None:
+        if self._cancel is not None:
+            self._cancel.set()
+            self.term.warn("Stopping…")
+
+    def _update_done(self, ident, status: str) -> None:
+        title, key = ident
+        self._cancel = None
+        self.loader.stop()
+        ok = status == "succeeded"
+        (self.term.ok if ok else self.term.error)({"succeeded": "Finished: the update completed.", "failed": "The update failed; see the output above.",
+                                                   "cancelled": "Stopped.", "timeout": "Timed out and was stopped.",
+                                                   "missing": "The program is not installed."}.get(status, status))
+        self.app.maintenance.record(title, "update", "success" if ok else ("cancelled" if status == "cancelled" else "failed"),
+                                    errors="" if ok else status)
+        _say(self.msg, f"{title}: {status}.", not ok)
+        self.scan()
 
     def _copy_command(self) -> None:
         rep = self._current()

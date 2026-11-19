@@ -224,6 +224,34 @@ def test_software_sources_detect_then_check_only_when_confirmed(env, qapp, monke
     assert not page.b_check.isEnabled()                       # APT updates are not checked from here
 
 
+def test_software_update_runs_in_the_app_after_confirmation(env, qapp, monkeypatch):
+    c, runner = env
+    c.software._run = FakeRunner({("flatpak", "list"): "org.gimp.GIMP" + chr(9) + "2.10.34" + chr(9) + "flathub" + chr(10)})
+    c.software._which = lambda n: None if n in ("snap", "pipx") else "/usr/bin/" + n
+    page = pp.SoftwareUpdatesPage(c)
+    assert wait_until(qapp, lambda: not page.loader.active and page.sources.rowCount() == 6)
+    ran = []
+
+    def fake_run(cmd, on_line, cancel=None, timeout=0):
+        ran.append(cmd.argv)
+        on_line("Updating org.gimp.GIMP")
+        return 0, "succeeded"
+    monkeypatch.setattr(pp, "run_streaming", fake_run)
+    page.sources.selectRow(1)                                    # Flatpak
+    assert page.b_update.isEnabled() and page.b_update.text() == "Update now…" and not page.b_update_item.isEnabled()
+    monkeypatch.setattr(pp, "confirm_dialog", lambda *a, **k: False)
+    page._update(False)
+    assert ran == []                                             # declining runs nothing
+    monkeypatch.setattr(pp, "confirm_dialog", lambda *a, **k: True)
+    page._update(False)
+    assert wait_until(qapp, lambda: "Finished" in page.term.toPlainText() and page._cancel is None)
+    assert ran == [("flatpak", "update", "--noninteractive", "-y")]
+    assert "$ flatpak update" in page.term.toPlainText() and "Updating org.gimp.GIMP" in page.term.toPlainText()
+    assert c.maintenance.entries()[0]["result"] == "success"
+    page.sources.selectRow(0)                                    # APT: the button leads to System Updates instead
+    assert page.b_update.text() == "Open System Updates" and page.b_update.isEnabled()
+
+
 # ---------------- overview / system info ----------------
 def test_overview_and_system_info_render_real_data(env, qapp, tmp_path, monkeypatch):
     c, runner = env

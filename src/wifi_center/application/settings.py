@@ -46,6 +46,7 @@ SPECS: dict[str, Spec] = {
     "osint.active": Spec(0, lambda v: isinstance(v, int) and not isinstance(v, bool)),
     "projects.active": Spec(0, lambda v: isinstance(v, int) and not isinstance(v, bool)),
     "integrations.bloodhound_url": Spec("http://127.0.0.1:8080", _is_str),
+    "lan.devices": Spec({}, lambda v: isinstance(v, dict) and all(isinstance(k, str) and isinstance(x, dict) for k, x in v.items())),
     "ui.favorite_tools": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v)),
 }
 
