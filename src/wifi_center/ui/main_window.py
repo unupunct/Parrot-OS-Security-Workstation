@@ -21,7 +21,7 @@ from .design.tokens import T
 from .navigation import find_item
 from .pages.activity_page import ActivityPage
 from .pages.assessment_pages import AssessmentPage, PasswordAuditPage, WebSecurityPage
-from .pages.bluetooth_page import BluetoothPage
+from .pages.bluetooth_lab import BluetoothLabPage
 from .pages.cleanup_pages import CleanupPage, MaintenancePage
 from .pages.discovery_pages import NetworkDiscoveryPage, NetworkMappingPage
 from .pages.parrot_pages import (PackageManagerPage, ParrotOverviewPage, SoftwareUpdatesPage, SystemInfoPage,
@@ -171,7 +171,7 @@ class MainWindow(QMainWindow):
             "wifi_center": lambda: AdapterPage(self.app),
             "wireless_discovery": lambda: DiscoveryPage(self.app, self._wifi_scanned),
             "kismet": lambda: KismetPage(self.app), "spectrum": lambda: SpectrumPage(self.app),
-            "bluetooth": lambda: BluetoothPage(self.app), "packets": lambda: PacketsPage(self.app),
+            "bluetooth": lambda: BluetoothLabPage(self.app), "packets": lambda: PacketsPage(self.app),
             "terminal": lambda: TerminalPage(self.app),
             "root_access": lambda: RootAccessPage(self.app, lambda a: self.topbar.set_privileged(a, "Privileged" if a else "Helper ready")),
             "settings_permissions": lambda: RootAccessPage(self.app, lambda a: self.topbar.set_privileged(a, "Privileged" if a else "Helper ready")),

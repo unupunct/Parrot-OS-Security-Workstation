@@ -62,7 +62,14 @@ class AdapterInfo:
     supported_settings: list[str] = field(default_factory=list)
     current_settings: list[str] = field(default_factory=list)
     lmp_features: list[str] = field(default_factory=list)
+    hci_revision: str = ""
+    lmp_subversion: str = ""
     rfkill: str = ""
+
+    @property
+    def firmware(self) -> str:
+        """The kernel does not report a firmware version; the controller's own revision numbers are the closest identifier."""
+        return f"HCI revision {self.hci_revision}, LMP subversion {self.lmp_subversion}" if self.hci_revision else "not reported by the controller"
 
     @property
     def classic(self) -> bool | None:
@@ -101,7 +108,7 @@ class DeviceInfo:
     advertising_flags: bytes = b""
     modalias: str = ""
     battery: int | None = None
-    last_update: float = 0.0      # monotonic time of the last RSSI/property update seen by the scanner
+    last_update: float | None = None      # monotonic time the RSSI last changed, as seen by the scanner
 
     @property
     def display_name(self) -> str:

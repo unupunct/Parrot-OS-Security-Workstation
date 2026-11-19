@@ -33,7 +33,7 @@ NAVIGATION: tuple[NavCategory, ...] = (
         NavItem("wireless_discovery", "Wireless Discovery", 3, "Access points seen by your adapter."),
         NavItem("kismet", "Kismet Monitor", 3, "Kismet service health and observations."),
         NavItem("spectrum", "Wi-Fi Analyzer", 3, "Channel graph, signal history, access-point list and channel rating."),
-        NavItem("bluetooth", "Bluetooth Lab", 3, "Adapter detection and discovery."),
+        NavItem("bluetooth", "Bluetooth Lab", 3, "Bluetooth diagnostics, scanning, signal monitor and inventory."),
         NavItem("packets", "Packet Analysis", 3, "PCAP statistics through TShark/Wireshark."),
     )),
     NavCategory("NETWORK SECURITY", (

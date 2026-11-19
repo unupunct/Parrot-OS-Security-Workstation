@@ -76,6 +76,19 @@ class AppController:
         self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)
         from ..services.hardware_info import HardwareInfoService
         self.hwinfo = HardwareInfoService()
+        from ..bluetooth.adapter import BluetoothAdapterManager
+        from ..bluetooth.bluez import UnavailableBluez, make_api
+        from ..bluetooth.diagnostics import BluetoothDiagnostics
+        from ..bluetooth.inventory import BluetoothInventory
+        from ..bluetooth.scanner import BluetoothScanner
+        from ..bluetooth.signal_monitor import BluetoothSignalMonitor
+        self.btapi = make_api()                                   # None when dbus-python is missing (the legacy scanner is used then)
+        _bt = self.btapi or UnavailableBluez()
+        self.btadapters = BluetoothAdapterManager(_bt)
+        self.btscanner = BluetoothScanner(_bt)
+        self.btinventory = BluetoothInventory(self.db)
+        self.btmonitor = BluetoothSignalMonitor(self.btscanner)
+        self.btdiag = BluetoothDiagnostics(_bt, self.btadapters, self.btscanner)
         from ..services.package_tools import PackageTools
         self.pkgtools = PackageTools(self.apt)
         from ..services.docs_service import DocsService
