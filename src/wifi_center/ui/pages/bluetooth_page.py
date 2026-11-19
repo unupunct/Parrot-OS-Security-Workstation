@@ -46,7 +46,7 @@ class BluetoothPage(QWidget):
         self.info = QLabel("")
         self.info.setWordWrap(True)
         lay.addWidget(self.info)
-        self.table = make_table(["Address", "Name", "Paired", "Connected", "RSSI", "Source", "Last seen"])
+        self.table = make_table(["Address", "Name", "Manufacturer", "Paired", "Connected", "RSSI", "Source", "Last seen"])
         self.table.setSortingEnabled(True)
         lay.addWidget(self.table, 1)
         self.diag = QPlainTextEdit()
@@ -79,13 +79,23 @@ class BluetoothPage(QWidget):
         lines = [f"{name}: {path or 'not found'}" for name, path in tools.items()]
         self.diag.setPlainText("Diagnostic tools\n" + "\n".join(lines) + "\n\nrfkill: " + self.svc.rfkill())
 
+    def _maker(self, address: str) -> str:
+        """Manufacturer from the address prefix. Random (private) addresses, used by most phones and gadgets, carry none."""
+        try:
+            first = int(address.split(":")[0], 16)
+        except ValueError:
+            return ""
+        if first & 0xC0 in (0xC0, 0x40):
+            return "private address"
+        return self.app.wireless.oui.vendor(address) or ""
+
     def reload(self) -> None:
         rows = self.svc.stored()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         tri = lambda v: "" if v is None else "yes" if v else "no"
         for r, d in enumerate(rows):
-            vals = [d["address"], d["name"] or "", tri(d["paired"]), tri(d["connected"]),
+            vals = [d["address"], d["name"] or "", self._maker(d["address"]), tri(d["paired"]), tri(d["connected"]),
                     "" if d["rssi"] is None else str(d["rssi"]), d["source"], fmt_ts(d["last_seen"])]
             for c, v in enumerate(vals):
                 self.table.setItem(r, c, QTableWidgetItem(v))
@@ -107,7 +117,7 @@ class BluetoothPage(QWidget):
         if ok != QMessageBox.StandardButton.Yes:
             return
         self.disc_btn.setEnabled(False)
-        self.status.setText(f"Discovering for {secs} s…")
+        self.status.setText(f"Discovering for {secs} s… (the dongle is scanning; results appear when it finishes)")
         self.app.audit.record("bluetooth.discover", seconds=secs)
         run_in_background(lambda: self.svc.discover(secs), lambda devs: self._store(devs, "bluez-discovery"), self._err)
 

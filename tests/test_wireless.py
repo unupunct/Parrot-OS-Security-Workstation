@@ -315,3 +315,59 @@ def test_bluetooth_without_hardware(tmp_path, monkeypatch):
     assert svc.adapters() == [] and svc.controller() is None and svc.known_devices() == []
     with pytest.raises(RuntimeError):
         svc.discover()
+
+
+def _bt_capture() -> str:
+    """Real `bluetoothctl --timeout 8 scan on` output: colour codes around NEW/CHG, readline markers, hex dumps."""
+    e = chr(27)
+    new = "[" + e + "[0;92mNEW" + e + "[0m]"
+    chg = "[" + e + "[0;93mCHG" + e + "[0m]"
+    return chr(10).join([
+        "SetDiscoveryFilter success", "Discovery started",
+        chg + " Controller 04:42:1A:5A:2B:DC Discovering: yes",
+        new + " Device 20:28:BC:6F:8D:57 [LG] webOS TV NANO783QA",
+        new + " Device 59:EC:B3:CD:B8:AB 59-EC-B3-CD-B8-AB",
+        new + " Device 50:8B:B9:01:FF:7E TY",
+        chg + " Device 50:8B:B9:01:FF:7E ManufacturerData.Key: 0x07d0 (2000)",
+        chg + " Device 50:8B:B9:01:FF:7E ManufacturerData.Value:",
+        "  81 03 00 00 0c 00 5f 9f 6e 03 22 00 95 d8 0a f2  ......_.n.\".....",
+        chg + " Device 59:EC:B3:CD:B8:AB RSSI: 0xffffffb7 (-73)",
+        chg + " Device 59:EC:B3:CD:B8:AB Name: Smart Plug",
+        chg + " Device 50:8B:B9:01:FF:7E RSSI: -60",
+        "[" + e + "[0;91mDEL" + e + "[0m] Device 99:99:99:99:99:99 gone",
+        chr(1) + "[bluetooth]" + chr(2) + "# " + e + "[0m",
+    ])
+
+
+def test_discovery_output_with_colours_is_parsed():
+    devs = {d.address: d for d in parse_devices(_bt_capture())}
+    assert set(devs) == {"20:28:BC:6F:8D:57", "59:EC:B3:CD:B8:AB", "50:8B:B9:01:FF:7E", "99:99:99:99:99:99"}
+    assert devs["20:28:BC:6F:8D:57"].name == "[LG] webOS TV NANO783QA"
+    assert devs["59:EC:B3:CD:B8:AB"].name == "Smart Plug" and devs["59:EC:B3:CD:B8:AB"].rssi == -73   # address-only name replaced by the real one
+    assert devs["50:8B:B9:01:FF:7E"].name == "TY" and devs["50:8B:B9:01:FF:7E"].rssi is None            # a malformed RSSI is ignored
+    assert parse_devices("Device 11:22:33:44:55:66 Speaker")[0].name == "Speaker"
+
+
+def test_discover_runs_bluetoothctl_and_enriches_with_info(controller, monkeypatch):
+    from types import SimpleNamespace
+
+    from wifi_center.services import bluetooth_service as bs
+    calls = []
+
+    def fake_run(argv, timeout=15, **k):
+        calls.append(argv)
+        if argv[:2] == ["bluetoothctl", "--timeout"]:
+            return SimpleNamespace(ok=True, stdout=_bt_capture(), stderr="")
+        info = "Device " + argv[-1] + chr(10) + "	Alias: x" + chr(10) + "	Paired: no" + chr(10) + "	Connected: no" + chr(10) + "	RSSI: 0xffffffc4 (-60)"
+        return SimpleNamespace(ok=True, stdout=info, stderr="")
+    monkeypatch.setattr(bs, "run_command", fake_run)
+    monkeypatch.setattr(bs, "find_executable", lambda n: "/usr/bin/" + n)
+    found = {d.address: d for d in controller.bluetooth.discover(8)}
+    assert calls[0] == ["bluetoothctl", "--timeout", "8", "scan", "on"] and len(found) == 4
+    assert found["59:EC:B3:CD:B8:AB"].rssi == -60 and found["20:28:BC:6F:8D:57"].paired is False
+
+
+def test_placeholder_alias_is_not_a_name():
+    assert parse_devices("Device 4D:77:D2:94:3E:86 4D-77-D2-94-3E-86")[0].name == ""
+    d = parse_info("Device 4D:77:D2:94:3E:86 (random)" + chr(10) + chr(9) + "Alias: 4D-77-D2-94-3E-86" + chr(10), "4D:77:D2:94:3E:86")
+    assert d.name == ""
