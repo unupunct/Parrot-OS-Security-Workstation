@@ -42,6 +42,8 @@ SPECS: dict[str, Spec] = {
     "ui.dashboard_layout": Spec([], lambda v: isinstance(v, list) and all(
         isinstance(i, dict) and isinstance(i.get("id"), str) and isinstance(i.get("span"), int) for i in v)),
     "ui.dashboard_splitter": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, int) for i in v)),
+    "projects.active": Spec(0, lambda v: isinstance(v, int) and not isinstance(v, bool)),
+    "integrations.bloodhound_url": Spec("http://127.0.0.1:8080", _is_str),
     "ui.favorite_tools": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v)),
 }
 

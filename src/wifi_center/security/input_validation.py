@@ -54,6 +54,8 @@ def validate_within(base: Path, candidate: str | Path) -> Path:
 
 
 def validate_hostname(value: str) -> str:
+    if re.fullmatch(r"[\d.]+", value or ""):  # looks like an IPv4 address: must validate as one, not as a name
+        raise ValidationError(f"invalid IP address: {value!r}")
     if not _HOSTNAME.match(value or ""):
         raise ValidationError(f"invalid hostname: {value!r}")
     return value.lower()

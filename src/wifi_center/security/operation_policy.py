@@ -37,7 +37,9 @@ def authorize(profile: ToolProfile, request: LaunchRequest) -> None:
     exe = Path(request.argv[0]).name.lower()
     if exe in FORBIDDEN_EXECUTABLES:
         raise PolicyViolation(f"executable '{exe}' is not permitted through the launcher")
-    if tuple(request.argv[1:]) != tuple(op.args):
+    if op.validator is not None:
+        op.validator(tuple(request.argv[1:]))   # parameterised operation: strict grammar check
+    elif tuple(request.argv[1:]) != tuple(op.args):
         raise PolicyViolation("arguments differ from the declared operation")
     if request.method != op.method:
         raise PolicyViolation("launch method differs from the declared operation")

@@ -69,7 +69,7 @@ def build_commands(app: AppController, navigate: Callable[[str], None], open_too
                             lambda u=p.docs_url: open_url(u), "", "docs help manual"))
         if s.installed and not p.restricted:
             for op in p.operations:
-                if op.method == LaunchMethod.DESKTOP:
+                if op.method == LaunchMethod.DESKTOP and not op.dynamic:
                     cmds.append(Command("Actions", f"Launch {p.name}", op.description,
                                         lambda tid=p.id, oid=op.id: run_op(tid, oid), "", "start open"))
     for key, (title, fn, sub) in actions.items():

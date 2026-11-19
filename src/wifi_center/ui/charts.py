@@ -50,7 +50,7 @@ class NumItem(QTableWidgetItem):
         return super().__lt__(other)  # type: ignore[arg-type]
 
 
-def make_table(headers: list[str], stretch_last: bool = True) -> QTableWidget:
+def make_table(headers: list[str], stretch_last: bool = True, stretch_col: int | None = None) -> QTableWidget:
     t = QTableWidget(0, len(headers))
     t.setHorizontalHeaderLabels(headers)
     t.verticalHeader().setVisible(False)
@@ -58,8 +58,13 @@ def make_table(headers: list[str], stretch_last: bool = True) -> QTableWidget:
     t.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     t.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     t.setAlternatingRowColors(True)
-    t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-    t.horizontalHeader().setStretchLastSection(stretch_last)
+    hh = t.horizontalHeader()
+    hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)   # columns fit their data...
+    if stretch_col is not None:
+        hh.setSectionResizeMode(stretch_col, QHeaderView.ResizeMode.Stretch)  # ...except one that takes the slack
+        hh.setStretchLastSection(False)
+    else:
+        hh.setStretchLastSection(stretch_last)
     return t
 
 

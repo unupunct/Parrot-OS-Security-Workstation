@@ -6,6 +6,7 @@ installation, version, dependencies and documentation for them and exposes no la
 from __future__ import annotations
 
 from .base import Dependency, LaunchMethod, Operation, ToolProfile
+from .nmap_args import validate_args as validate_nmap_args
 
 CATEGORIES = (
     "Wireless monitoring and analysis",
@@ -139,8 +140,12 @@ PROFILES: tuple[ToolProfile, ...] = (
         executables=("nmap",), apt_packages=("nmap",),
         docs_url="https://nmap.org/docs.html", source_url="https://github.com/nmap/nmap",
         install_hint="sudo apt install nmap",
-        capabilities=("Version detection", "Scoped host discovery and result import (Phase 4)"),
-        operations=_cli(("--version",)), version_args=("--version",), version_regex=r"Nmap version (\S+)",
+        capabilities=("Version detection", "Scoped host discovery and service inventory (authorized scope only)",
+                      "Import of XML, normal and grepable results"),
+        operations=_cli(("--version",)) + (
+            Operation("scan", "Scoped scan", "Run an approved scan profile against targets inside the project's "
+                      "authorized scope.", LaunchMethod.CLI, (), 900.0, dynamic=True, validator=validate_nmap_args),),
+        version_args=("--version",), version_regex=r"Nmap version (\S+)",
         license="Nmap Public Source License"),
     # ---- Web security ----
     ToolProfile(

@@ -208,7 +208,9 @@ class ToolDetailPanel(QFrame):
             f"{esc(r['name'])} — {esc(r['status'])} {muted(esc(r['started_at']))}" for r in recent) or muted("none")))
         self.view.setHtml("".join(h))
 
-        for op in p.operations:  # only operations the integration declares
+        for op in p.operations:  # only operations the integration declares (parameterised ones live in their workspace)
+            if op.dynamic:
+                continue
             desktop = op.method == LaunchMethod.DESKTOP
             b = MatrixButton(op.title, "primary" if desktop else "default", "launch" if desktop else "info")
             b.setToolTip(op.description)

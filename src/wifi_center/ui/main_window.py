@@ -19,7 +19,9 @@ from .design.overlay import StartupOverlay
 from .design.tokens import T
 from .navigation import find_item
 from .pages.activity_page import ActivityPage
+from .pages.assessment_pages import AssessmentPage, PasswordAuditPage, WebSecurityPage
 from .pages.bluetooth_page import BluetoothPage
+from .pages.discovery_pages import NetworkDiscoveryPage, NetworkMappingPage
 from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.planned import PlannedPage
@@ -156,10 +158,21 @@ class MainWindow(QMainWindow):
             "bluetooth": lambda: BluetoothPage(self.app), "packets": lambda: PacketsPage(self.app),
             "terminal": lambda: TerminalPage(self.app),
             "activity": lambda: ActivityPage(self.app, self.open_operation),
+            "net_discovery": lambda: NetworkDiscoveryPage(self.app),
+            "net_mapping": lambda: NetworkMappingPage(self.app),
+            "assessment": lambda: AssessmentPage(self.app),
+            "web_security": self._make_web_security,
+            "password_audit": lambda: PasswordAuditPage(self.app),
         }
         if page_id in factories:
             return factories[page_id]()
         return PlannedPage(find_item(page_id))  # type: ignore[arg-type]
+
+    def _make_web_security(self) -> QWidget:
+        page = WebSecurityPage(self.app)
+        page.navigate = self.sidebar.select_page
+        page.operation_started = self.open_operation
+        return page
 
     def _configure_tool(self, tool_id: str) -> None:
         self.sidebar.select_page("tools_config")

@@ -10,9 +10,13 @@ from ..services.backup_service import BackupService
 from ..security.audit_log import AuditLog
 from ..services.operation_manager import OperationManager
 from ..services.bluetooth_service import BluetoothService
+from ..services.bloodhound_service import BloodHoundService
 from ..services.network_inventory import NetworkInventoryService
+from ..services.nmap_service import NmapService
 from ..services.notification_service import NotificationService
 from ..services.packet_service import PacketService
+from ..services.project_service import ProjectService
+from ..services.report_import import ReportImportService
 from ..services.system_service import SystemService
 from ..services.wireless_service import WirelessService
 from ..services.tool_manager import ToolManager
@@ -45,6 +49,10 @@ class AppController:
         self.inventory = NetworkInventoryService(self.db, self.wireless.oui)
         self.notifications = NotificationService(self.db)
         self.bluetooth = BluetoothService(self.db)
+        self.projects = ProjectService(self.db)
+        self.nmap = NmapService(self.db, self.projects, self.paths.data_dir / "scans")
+        self.report_import = ReportImportService(self.db, self.projects)
+        self.bloodhound = BloodHoundService()
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)

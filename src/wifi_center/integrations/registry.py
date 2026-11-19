@@ -6,9 +6,11 @@ from typing import Any, Mapping
 from .base import SystemProbe, ToolIntegration
 from .bloodhound import BloodHoundIntegration
 from .catalog import PROFILES
+from .nmap import NmapIntegration
 
 SPECIAL: dict[str, type[ToolIntegration]] = {
     "bloodhound-ce": BloodHoundIntegration,
+    "nmap": NmapIntegration,
 }
 
 

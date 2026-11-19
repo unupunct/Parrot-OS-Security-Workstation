@@ -12,7 +12,7 @@ import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from ..services.process_runner import CommandResult, run_command
 
@@ -55,6 +55,8 @@ class Operation:
     method: LaunchMethod
     args: tuple[str, ...] = ()       # appended after the executable
     timeout: float = 30.0
+    dynamic: bool = False            # needs validated parameters; never launched by a bare button/palette entry
+    validator: Callable[[tuple[str, ...]], None] | None = None  # raises PolicyViolation for a bad command line
 
 
 @dataclass(frozen=True)
