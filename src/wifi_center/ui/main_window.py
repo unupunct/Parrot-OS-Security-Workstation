@@ -24,6 +24,7 @@ from .pages.bluetooth_page import BluetoothPage
 from .pages.discovery_pages import NetworkDiscoveryPage, NetworkMappingPage
 from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
+from .pages.osint_pages import OsintWorkspacePage
 from .pages.planned import PlannedPage
 from .pages.settings_page import SettingsPage
 from .pages.spectrum_page import SpectrumPage
@@ -163,6 +164,11 @@ class MainWindow(QMainWindow):
             "assessment": lambda: AssessmentPage(self.app),
             "web_security": self._make_web_security,
             "password_audit": lambda: PasswordAuditPage(self.app),
+            "osint": lambda: OsintWorkspacePage(self.app, "explorer"),
+            "osint_user": lambda: OsintWorkspacePage(self.app, "username"),
+            "osint_email": lambda: OsintWorkspacePage(self.app, "email"),
+            "osint_domain": lambda: OsintWorkspacePage(self.app, "domain"),
+            "osint_ip": lambda: OsintWorkspacePage(self.app, "ip"),
         }
         if page_id in factories:
             return factories[page_id]()

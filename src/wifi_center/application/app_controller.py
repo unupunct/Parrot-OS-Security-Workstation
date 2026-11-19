@@ -14,6 +14,7 @@ from ..services.bloodhound_service import BloodHoundService
 from ..services.network_inventory import NetworkInventoryService
 from ..services.nmap_service import NmapService
 from ..services.notification_service import NotificationService
+from ..services.osint_service import OsintService
 from ..services.packet_service import PacketService
 from ..services.project_service import ProjectService
 from ..services.report_import import ReportImportService
@@ -53,6 +54,7 @@ class AppController:
         self.nmap = NmapService(self.db, self.projects, self.paths.data_dir / "scans")
         self.report_import = ReportImportService(self.db, self.projects)
         self.bloodhound = BloodHoundService()
+        self.osint = OsintService(self.db)
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)

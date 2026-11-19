@@ -47,7 +47,7 @@ def fuzzy_score(query: str, text: str) -> int | None:
     return score
 
 
-GROUP_ORDER = ["Pages", "Tools", "Actions", "Documentation", "Projects", "Settings"]
+GROUP_ORDER = ["Pages", "Tools", "OSINT", "Actions", "Documentation", "Projects", "Settings"]
 SHORTCUTS = {"overview": "Ctrl+1", "wireless_discovery": "Ctrl+2", "tools_all": "Ctrl+3", "terminal": "Ctrl+4",
              "settings_general": "Ctrl+,"}
 
@@ -74,6 +74,9 @@ def build_commands(app: AppController, navigate: Callable[[str], None], open_too
                                         lambda tid=p.id, oid=op.id: run_op(tid, oid), "", "start open"))
     for key, (title, fn, sub) in actions.items():
         cmds.append(Command("Actions", title, sub, fn, "", key))
+    for r in app.osint.resources():
+        cmds.append(Command("OSINT", r["name"], " · ".join(r["categories"]) + " · " + (r["description"] or ""),
+                            lambda: navigate("osint"), "", " ".join(r["categories"]) + " osint research"))
     for r in app.db.query("SELECT id, name, kind FROM projects ORDER BY updated_at DESC LIMIT 50"):
         cmds.append(Command("Projects", r["name"], f"{r['kind']} project", lambda: navigate("project_history")))
     return cmds

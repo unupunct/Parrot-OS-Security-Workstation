@@ -57,8 +57,11 @@ class ProjectService:
             raise ValidationError("project name must be 1-120 characters")
         return self._db.execute("INSERT INTO projects(name, kind) VALUES (?, ?)", (name, kind))
 
-    def list(self) -> list[dict]:
-        return [dict(r) for r in self._db.query("SELECT * FROM projects ORDER BY updated_at DESC, id DESC")]
+    def list(self, kind: str | None = None) -> list[dict]:
+        sql, params = "SELECT * FROM projects", ()
+        if kind:
+            sql, params = sql + " WHERE kind = ?", (kind,)
+        return [dict(r) for r in self._db.query(sql + " ORDER BY updated_at DESC, id DESC", params)]
 
     def get(self, project_id: int) -> dict | None:
         r = self._db.query_one("SELECT * FROM projects WHERE id = ?", (project_id,))

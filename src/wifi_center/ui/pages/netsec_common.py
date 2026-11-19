@@ -18,18 +18,21 @@ class ProjectBar(QWidget):
 
     project_changed = Signal(int)
 
-    def __init__(self, app: AppController, allow_none: bool = False) -> None:
+    def __init__(self, app: AppController, allow_none: bool = False, kind: str | None = None,
+                 new_kind: str = "assessment", label: str = "Project") -> None:
         super().__init__()
         self.app = app
         self.allow_none = allow_none
+        self.kind, self.new_kind = kind, new_kind
+        self._key = "osint.active" if new_kind == "investigation" else "projects.active"
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(QLabel("Project"))
+        lay.addWidget(QLabel(label))
         self.combo = QComboBox()
         self.combo.setMinimumWidth(240)
         self.combo.currentIndexChanged.connect(self._changed)
         lay.addWidget(self.combo)
-        self.new_btn = MatrixButton("New project…", icon_name="project")
+        self.new_btn = MatrixButton("New investigation…" if self.new_kind == "investigation" else "New project…", icon_name="project")
         self.new_btn.clicked.connect(self._new)
         lay.addWidget(self.new_btn)
         lay.addStretch(1)
@@ -39,12 +42,12 @@ class ProjectBar(QWidget):
         return self.combo.currentData()
 
     def reload(self, select: int | None = None) -> None:
-        want = select if select is not None else (self.project_id() or self.app.settings.get("projects.active") or None)
+        want = select if select is not None else (self.project_id() or self.app.settings.get(self._key) or None)
         self.combo.blockSignals(True)
         self.combo.clear()
         if self.allow_none:
             self.combo.addItem("All projects", None)
-        for p in self.app.projects.list():
+        for p in self.app.projects.list(self.kind):
             self.combo.addItem(p["name"], p["id"])
         idx = self.combo.findData(want) if want else -1
         self.combo.setCurrentIndex(idx if idx >= 0 else 0)
@@ -56,15 +59,15 @@ class ProjectBar(QWidget):
     def _changed(self) -> None:
         pid = self.project_id()
         if pid:
-            self.app.settings.set("projects.active", int(pid))
+            self.app.settings.set(self._key, int(pid))
         self.project_changed.emit(int(pid) if pid else 0)
 
     def _new(self) -> None:
-        name, ok = QInputDialog.getText(self, "New project", "Project name:")
+        name, ok = QInputDialog.getText(self, "New project", "Name:")
         if not ok:
             return
         try:
-            pid = self.app.projects.create(name)
+            pid = self.app.projects.create(name, self.new_kind)
         except ValidationError as e:
             QMessageBox.warning(self, "New project", str(e))
             return
