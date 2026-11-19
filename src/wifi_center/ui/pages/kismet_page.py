@@ -17,6 +17,7 @@ from ...services import kismet_service as ks
 from ...services.kismet_service import KismetClient, KismetError
 from ...workers.task import run_in_background
 from ..charts import fmt_ts, make_table
+from ..design.tokens import T
 
 
 def _human(n: int) -> str:
@@ -47,7 +48,7 @@ class KismetPage(QWidget):
         det = self.app.tools.cached("kismet") or self.app.tools.scan_tool("kismet")
         state = ks.service_state()
         if not det.installed:
-            msg = "<b style='color:#F2B84B'>Kismet is not installed.</b> Install it with <code>sudo apt install kismet</code>."
+            msg = f"<b style='color:{T.warning}'>Kismet is not installed.</b> Install it with <code>sudo apt install kismet</code>."
         else:
             msg = (f"Kismet {html.escape(det.version or 'version unknown')} installed · systemd unit "
                    f"<code>kismet</code>: <b>{html.escape(state)}</b> (Kismet is often started manually, "

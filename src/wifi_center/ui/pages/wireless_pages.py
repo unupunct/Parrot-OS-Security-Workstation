@@ -13,7 +13,13 @@ from ...application.app_controller import AppController
 from ...services.adapter_service import AdapterService, WirelessAdapter
 from ...services.wireless_service import ScanError
 from ...workers.task import run_in_background
+import pyqtgraph as pg
+from PySide6.QtWidgets import QTabWidget
+
 from ..charts import NumItem, color, fmt_ts, make_plot, make_table, signal_bars
+from ..design.components import LoadingIndicator, StatusChip
+from ..design.tokens import T
+from ..radar import RadarWidget
 
 esc = html.escape
 
@@ -101,8 +107,8 @@ class AdapterPage(QWidget):
                 ("Vendor:device ID", ids), ("Bands", ", ".join(a.bands) or "unknown"), ("Monitor mode", mon),
                 ("Connected network", a.connected_ssid or "not connected"), ("PHY", a.phy or "unknown")]
         self.details.setHtml("<table cellpadding='4'>" + "".join(
-            f"<tr><td style='color:#8D9C91'>{esc(k)}</td><td>{esc(v)}</td></tr>" for k, v in rows) + "</table>"
-            "<p style='color:#8D9C91'>Chipset is not reported by the kernel; the vendor:device ID above identifies it.</p>")
+            f"<tr><td style='color:{T.text_secondary}'>{esc(k)}</td><td>{esc(v)}</td></tr>" for k, v in rows) + "</table>"
+            f"<p style='color:{T.text_secondary}'>Chipset is not reported by the kernel; the vendor:device ID above identifies it.</p>")
         self.diag.clear()
 
     def _diagnostics(self) -> None:
@@ -144,6 +150,18 @@ class DiscoveryPage(QWidget):
             head.addWidget(w)
         lay.addLayout(head)
 
+        strip = QHBoxLayout()
+        self.chip_adapter = StatusChip("Adapter: detecting…", T.text_muted)
+        self.chip_bands = StatusChip("Bands: ?", T.text_muted)
+        self.chip_monitor = StatusChip("Monitoring: not active", T.text_muted)
+        self.chip_monitor.setToolTip("WIFI Center scans in managed mode. Monitor-mode control arrives with the "
+                                     "privileged helper (Phase 8).")
+        self.loader = LoadingIndicator("radar", 26)
+        for c in (self.chip_adapter, self.chip_bands, self.chip_monitor, self.loader):
+            strip.addWidget(c)
+        strip.addStretch(1)
+        lay.addLayout(strip)
+
         bar = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search SSID, BSSID, vendor…")
@@ -168,15 +186,38 @@ class DiscoveryPage(QWidget):
         self.status.setWordWrap(True)
         lay.addWidget(self.status)
 
-        split = QSplitter(Qt.Orientation.Vertical)
+        # ---- laboratory layout: table | radar + details, instruments below
         self.table = make_table(COLS)
         self.table.setSortingEnabled(True)
         self.table.itemSelectionChanged.connect(self._history)
-        split.addWidget(self.table)
+        self.radar = RadarWidget()
+        self.radar.ap_selected.connect(self._select_by_id)
+        self.details = QTextBrowser()
+        self.details.setMinimumHeight(90)
+        right = QSplitter(Qt.Orientation.Vertical)
+        right.addWidget(self.radar)
+        right.addWidget(self.details)
+        right.setStretchFactor(0, 3)
+        top = QSplitter(Qt.Orientation.Horizontal)
+        top.addWidget(self.table)
+        top.addWidget(right)
+        top.setStretchFactor(0, 3)
+        top.setStretchFactor(1, 2)
+        top.setSizes([760, 420])
+
         self.plot = make_plot("Signal history of the selected network", "scan #", "dBm")
-        self.plot.setMinimumHeight(140)
-        split.addWidget(self.plot)
+        self.chan_plot = make_plot("Channel distribution (current view)", "channel", "networks")
+        self.timeline_plot = make_plot("Activity timeline: access points seen per scan", "scan #", "networks")
+        self.instruments = QTabWidget()
+        self.instruments.addTab(self.plot, "Signal history")
+        self.instruments.addTab(self.chan_plot, "Channel distribution")
+        self.instruments.addTab(self.timeline_plot, "Activity timeline")
+        self.instruments.setMinimumHeight(140)
+        split = QSplitter(Qt.Orientation.Vertical)
+        split.addWidget(top)
+        split.addWidget(self.instruments)
         split.setStretchFactor(0, 3)
+        split.setSizes([520, 230])
         lay.addWidget(split, 1)
 
         self._timer = QTimer(self)
@@ -186,8 +227,19 @@ class DiscoveryPage(QWidget):
 
     # ---- interfaces ----
     def _fill_ifaces(self) -> None:
-        run_in_background(self.app.services.get(AdapterService).detect, lambda adapters: [
-            self.iface.addItem(a.interface, a.interface) for a in adapters], lambda e: None)
+        def done(adapters) -> None:
+            for a in adapters:
+                self.iface.addItem(a.interface, a.interface)
+            if adapters:
+                a = adapters[0]
+                self.chip_adapter.set_state(f"{a.interface} · {a.state} · {a.driver or 'driver ?'}",
+                                            T.success if a.state == "up" else T.warning)
+                self.chip_bands.set_state("Bands: " + (", ".join(a.bands) or "unknown"), T.cyan)
+                mon = {True: "monitor capable", False: "no monitor mode", None: "monitor unknown"}[a.monitor_capable]
+                self.chip_monitor.set_state(f"Monitoring: inactive · {mon}", T.text_muted)
+            else:
+                self.chip_adapter.set_state("No wireless adapter detected", T.text_muted)
+        run_in_background(self.app.services.get(AdapterService).detect, done, lambda e: None)
 
     # ---- scanning ----
     def _toggle_auto(self, on: bool) -> None:
@@ -200,6 +252,7 @@ class DiscoveryPage(QWidget):
             return
         iface = self.iface.currentData() or None
         self.scan_btn.setEnabled(False)
+        self.loader.start()
         self.status.setText("Scanning…")
 
         def work():
@@ -212,6 +265,7 @@ class DiscoveryPage(QWidget):
 
     def _scanned(self, n: int) -> None:
         self.scan_btn.setEnabled(True)
+        self.loader.stop()
         self.status.setText(f"Scan complete: {n} access points." + ("" if self.svc.oui.available else
                             "  Vendor names unavailable (install the ieee-data package)."))
         self.reload_view()
@@ -220,6 +274,7 @@ class DiscoveryPage(QWidget):
 
     def _scan_failed(self, err: str) -> None:
         self.scan_btn.setEnabled(True)
+        self.loader.stop()
         self.status.setText(f"Scan failed: {err}")
 
     # ---- table ----
@@ -257,9 +312,32 @@ class DiscoveryPage(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, o["id"])
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
+        self.radar.set_observations(self._rows)
+        self._draw_instruments()
         if not self._rows and not self.status.text().startswith(("Scan", "Scanning")):
             self.status.setText("No observations yet. Press “Scan now” (needs NetworkManager or iw and a wireless adapter).")
         self.table.resizeColumnsToContents()
+
+    def _select_by_id(self, obs_id: int) -> None:
+        for r in range(self.table.rowCount()):
+            if self.table.item(r, 0).data(Qt.ItemDataRole.UserRole) == obs_id:
+                self.table.selectRow(r)
+                return
+
+    def _draw_instruments(self) -> None:
+        from collections import Counter
+        self.chan_plot.clear()
+        counts = Counter(o["channel"] for o in self._rows if o["channel"])
+        chans = sorted(counts)
+        if chans:
+            self.chan_plot.addItem(pg.BarGraphItem(x=list(range(len(chans))), height=[counts[c] for c in chans],
+                                                   width=0.7, brush=color(0), pen=None))
+            self.chan_plot.getAxis("bottom").setTicks([[(i, str(c)) for i, c in enumerate(chans)]])
+        self.timeline_plot.clear()
+        tl = self.svc.scan_timeline()
+        if tl:
+            self.timeline_plot.addItem(pg.BarGraphItem(x=list(range(1, len(tl) + 1)), height=[n for _, n in tl],
+                                                       width=0.7, brush=color(1), pen=None))
 
     def _history(self) -> None:
         self.plot.clear()
@@ -267,10 +345,27 @@ class DiscoveryPage(QWidget):
         item = self.table.item(r, 0) if r >= 0 else None
         if not item:
             return
-        samples = [s for s in self.svc.history(item.data(Qt.ItemDataRole.UserRole)) if s["signal_dbm"] is not None]
+        oid = item.data(Qt.ItemDataRole.UserRole)
+        self.radar.set_selected(oid)
+        row = next((o for o in self._rows if o["id"] == oid), None)
+        if row:
+            self._show_details(row)
+        samples = [s for s in self.svc.history(oid) if s["signal_dbm"] is not None]
         if samples:
             self.plot.plot(list(range(1, len(samples) + 1)), [s["signal_dbm"] for s in samples],
                            pen=color(0), symbol="o", symbolSize=6, symbolBrush=color(0))
+
+    def _show_details(self, o: dict) -> None:
+        pct = f" ({o['signal_pct']:.0f} %)" if o.get("signal_pct") is not None else ""
+        rows = [("SSID", o["ssid"] or "<hidden>"), ("BSSID", o["bssid"]), ("Vendor", o["vendor"] or "unknown"),
+                ("Channel / band", f"{o['channel']} · {o['band']} · {o['frequency_mhz']} MHz"),
+                ("Signal", f"{o['signal_dbm']:.0f} dBm{pct}" if o["signal_dbm"] is not None else "—"),
+                ("Security", f"{o['encryption']}" + (f" / {o['auth']}" if o["auth"] else "")),
+                ("First seen", fmt_ts(o["first_seen"])), ("Last seen", fmt_ts(o["last_seen"])),
+                ("Source", o["source"])]
+        self.details.setHtml("<table cellpadding='3'>" + "".join(
+            f"<tr><td style='color:{T.text_secondary}'>{esc(k)}</td><td>{esc(str(v))}</td></tr>" for k, v in rows)
+            + "</table>")
 
     def _export(self) -> None:
         if not self._rows:

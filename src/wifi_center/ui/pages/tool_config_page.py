@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QComboBox, QFileDialog, QFormLayout, QHBoxLayout,
 from ...application.app_controller import AppController
 from ...integrations.catalog import PROFILES
 from ...security.input_validation import ValidationError
+from ..design.tokens import T
 
 
 class ToolConfigPage(QWidget):
@@ -61,6 +62,11 @@ class ToolConfigPage(QWidget):
         lay.addStretch(1)
         self._load()
 
+    def select_tool(self, tool_id: str) -> None:
+        i = self.tool.findData(tool_id)
+        if i >= 0:
+            self.tool.setCurrentIndex(i)
+
     def _tid(self) -> str:
         return self.tool.currentData()
 
@@ -85,7 +91,7 @@ class ToolConfigPage(QWidget):
             self.app.tools.set_config(self._tid(), self.install_path.text(), self.exe.text())
         except ValidationError as e:
             self.msg.setObjectName("err")
-            self.msg.setStyleSheet("color:#F05D5E")
+            self.msg.setStyleSheet(f"color:{T.danger}")
             self.msg.setText(f"Not saved: {e}")
             return
         s = self.app.tools.scan_tool(self._tid())

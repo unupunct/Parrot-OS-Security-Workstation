@@ -11,10 +11,11 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QLis
 
 from ...application.app_controller import AppController
 from ...services.operation_manager import OperationState
+from ..design.tokens import T
 
-COLORS = {"stdout": "#E7F1E9", "stderr": "#F05D5E", "info": "#00D5C8"}
-STATUS_COLOR = {"running": "#4DA3FF", "succeeded": "#00FF66", "launched": "#00FF66", "failed": "#F05D5E",
-                "cancelled": "#F2B84B", "timeout": "#F2B84B", "interrupted": "#F2B84B"}
+COLORS = {"stdout": T.text, "stderr": T.danger, "info": T.cyan}
+STATUS_COLOR = {"running": T.info, "succeeded": T.green, "launched": T.green, "failed": T.danger,
+                "cancelled": T.warning, "timeout": T.warning, "interrupted": T.warning}
 
 
 class TerminalPage(QWidget):
@@ -91,7 +92,7 @@ class TerminalPage(QWidget):
         self.list.clear()
         for o in ops:
             it = QListWidgetItem(f"#{o.id} {o.name}\n{o.status}")
-            it.setForeground(QColor(STATUS_COLOR.get(o.status, "#E7F1E9")))
+            it.setForeground(QColor(STATUS_COLOR.get(o.status, T.text)))
             self.list.addItem(it)
         self.list.blockSignals(False)
         if keep in self._ids:
@@ -118,7 +119,7 @@ class TerminalPage(QWidget):
 
     def _append(self, stream: str, line: str) -> None:
         fmt = QTextCharFormat()
-        fmt.setForeground(QColor(COLORS.get(stream, "#E7F1E9")))
+        fmt.setForeground(QColor(COLORS.get(stream, T.text)))
         cur = self.view.textCursor()
         cur.movePosition(QTextCursor.MoveOperation.End)
         cur.insertText(line + "\n", fmt)
@@ -141,7 +142,7 @@ class TerminalPage(QWidget):
             op.runtime = time.monotonic() - op.started_monotonic
         self.cancel_btn.setEnabled(op.active)
         self.meta.setText(
-            f"<b>{op.name}</b> · status <span style='color:{STATUS_COLOR.get(op.status, '#E7F1E9')}'>{op.status}</span>"
+            f"<b>{op.name}</b> · status <span style='color:{STATUS_COLOR.get(op.status, T.text)}'>{op.status}</span>"
             f" · started {op.started_at.replace('T', ' ')} · runtime {op.runtime:.1f}s"
             + (f" · exit code {op.exit_code}" if op.exit_code is not None else ""))
         self.meta.setTextFormat(Qt.TextFormat.RichText)

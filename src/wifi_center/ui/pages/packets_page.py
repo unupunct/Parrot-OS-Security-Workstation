@@ -15,6 +15,7 @@ from ...services.packet_service import PacketAnalysis, PacketError, validate_cap
 from ...workers.task import run_in_background
 from ..charts import color, make_plot, make_table
 from ..widgets import human_bytes
+from ..design.tokens import T
 
 
 class PacketsPage(QWidget):
@@ -70,10 +71,10 @@ class PacketsPage(QWidget):
 
     def _check_tools(self) -> None:
         if self.svc.available():
-            self.banner.setText("<span style='color:#00FF66'>TShark detected.</span>")
+            self.banner.setText(f"<span style='color:{T.green}'>TShark detected.</span>")
             self.open_btn.setEnabled(True)
         else:
-            self.banner.setText("<span style='color:#F2B84B'><b>TShark is not installed</b> — install it with "
+            self.banner.setText(f"<span style='color:{T.warning}'><b>TShark is not installed</b> — install it with "
                                 "<code>sudo apt install tshark</code> to analyze captures.</span>")
             self.open_btn.setEnabled(False)
 

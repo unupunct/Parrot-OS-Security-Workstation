@@ -36,6 +36,13 @@ SPECS: dict[str, Spec] = {
     "ui.splitter_sizes": Spec([260, 1000], lambda v: isinstance(v, list) and all(isinstance(i, int) for i in v)),
     "ui.collapsed_categories": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v)),
     "notifications.enabled": Spec(True, _is_bool),
+    "ui.animation_intensity": Spec("high", lambda v: v in ("low", "normal", "high")),
+    "ui.reduced_motion": Spec(False, _is_bool),
+    "ui.startup_animation": Spec(True, _is_bool),
+    "ui.dashboard_layout": Spec([], lambda v: isinstance(v, list) and all(
+        isinstance(i, dict) and isinstance(i.get("id"), str) and isinstance(i.get("span"), int) for i in v)),
+    "ui.dashboard_splitter": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, int) for i in v)),
+    "ui.favorite_tools": Spec([], lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v)),
 }
 
 

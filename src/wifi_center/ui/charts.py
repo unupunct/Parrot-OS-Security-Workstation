@@ -6,11 +6,12 @@ from datetime import datetime
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
+from .design.tokens import T
 
-BG = "#111B15"
-FG = "#8D9C91"
-GRID = "#1F2E25"
-SERIES = ["#00FF66", "#00D5C8", "#F2B84B", "#4DA3FF", "#F05D5E", "#B58CFF", "#FF8FD1", "#C6E86B"]
+BG = T.panel
+FG = T.text_secondary
+GRID = T.border
+SERIES = [T.green, T.cyan, T.warning, T.info, T.danger, "#B58CFF", "#FF8FD1", "#C6E86B"]
 
 
 def make_plot(title: str = "", x_label: str = "", y_label: str = "") -> pg.PlotWidget:

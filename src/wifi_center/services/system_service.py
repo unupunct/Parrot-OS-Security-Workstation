@@ -83,6 +83,16 @@ class SystemService:
         u = shutil.disk_usage(root)
         return DiskInfo(root, u.total, u.used, u.used / u.total * 100 if u.total else 0.0)
 
+    def net_counters(self) -> tuple[int, int]:
+        """Total (bytes_sent, bytes_received) over non-loopback interfaces."""
+        sent = recv = 0
+        for name, c in psutil.net_io_counters(pernic=True).items():
+            if name == "lo" or name.lower().startswith("loopback"):
+                continue
+            sent += c.bytes_sent
+            recv += c.bytes_recv
+        return sent, recv
+
     def uptime_seconds(self) -> float:
         return time.time() - psutil.boot_time()
 

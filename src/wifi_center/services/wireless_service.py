@@ -226,6 +226,12 @@ class WirelessService:
             "SELECT ts, signal_dbm, signal_pct, channel FROM wireless_samples WHERE observation_id=? "
             "ORDER BY ts DESC LIMIT ?", (observation_id, limit))][::-1]
 
+    def scan_timeline(self, limit: int = 60) -> list[tuple[str, int]]:
+        """(scan timestamp, access points seen) for the most recent scans, oldest first."""
+        rows = self._db.query("SELECT ts, COUNT(*) n FROM wireless_samples GROUP BY ts ORDER BY ts DESC LIMIT ?",
+                              (limit,))
+        return [(r["ts"], r["n"]) for r in rows][::-1]
+
     def latest_scan_ts(self) -> str | None:
         r = self._db.query_one("SELECT MAX(ts) t FROM wireless_samples")
         return r["t"] if r else None

@@ -82,7 +82,28 @@ class SettingsPage(QWidget):
                 self.accent.setCurrentIndex(i)
         self.accent.activated.connect(self._accent_picked)
         form.addRow("Accent colour", self.accent)
+        st = self.app.settings
+        self.intensity = QComboBox()
+        self.intensity.addItems(["low", "normal", "high"])
+        self.intensity.setCurrentText(st.get("ui.animation_intensity"))
+        self.intensity.currentTextChanged.connect(self._motion_changed)
+        form.addRow("Animation intensity", self.intensity)
+        self.reduced = QCheckBox("Reduced motion (no continuous animations or transitions)")
+        self.reduced.setChecked(st.get("ui.reduced_motion"))
+        self.reduced.toggled.connect(self._motion_changed)
+        form.addRow(self.reduced)
+        self.startup = QCheckBox("Play the startup transition")
+        self.startup.setChecked(st.get("ui.startup_animation"))
+        self.startup.toggled.connect(lambda v: st.set("ui.startup_animation", v))
+        form.addRow(self.startup)
         return w
+
+    def _motion_changed(self, *_a) -> None:
+        from ..design.motion import Motion
+        st = self.app.settings
+        st.set("ui.animation_intensity", self.intensity.currentText())
+        st.set("ui.reduced_motion", self.reduced.isChecked())
+        Motion.instance().configure(self.intensity.currentText(), self.reduced.isChecked())
 
     def _accent_picked(self, idx: int) -> None:
         presets = list(ACCENT_PRESETS.values())

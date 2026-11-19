@@ -10,6 +10,7 @@ from ...application.app_controller import AppController
 from ...services.bluetooth_service import BluetoothService
 from ...workers.task import run_in_background
 from ..charts import fmt_ts, make_table
+from ..design.tokens import T
 
 
 class BluetoothPage(QWidget):
@@ -70,7 +71,7 @@ class BluetoothPage(QWidget):
         elif have_ctl:
             parts.append("bluetoothctl found but no controller is available")
         else:
-            parts.append("<span style='color:#F2B84B'>bluetoothctl (BlueZ) not installed: "
+            parts.append(f"<span style='color:{T.warning}'>bluetoothctl (BlueZ) not installed: "
                          "<code>sudo apt install bluez</code></span>")
         self.info.setText(" · ".join(parts))
         self.disc_btn.setEnabled(have_ctl)

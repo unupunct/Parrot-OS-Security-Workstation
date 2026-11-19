@@ -10,6 +10,8 @@ from ..services.backup_service import BackupService
 from ..security.audit_log import AuditLog
 from ..services.operation_manager import OperationManager
 from ..services.bluetooth_service import BluetoothService
+from ..services.network_inventory import NetworkInventoryService
+from ..services.notification_service import NotificationService
 from ..services.packet_service import PacketService
 from ..services.system_service import SystemService
 from ..services.wireless_service import WirelessService
@@ -40,6 +42,8 @@ class AppController:
         )
         self.wireless = WirelessService(self.db)
         self.packets = PacketService()
+        self.inventory = NetworkInventoryService(self.db, self.wireless.oui)
+        self.notifications = NotificationService(self.db)
         self.bluetooth = BluetoothService(self.db)
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)

@@ -50,7 +50,7 @@ NAVIGATION: tuple[NavCategory, ...] = (
         NavItem("osint_domain", "Domain Research", 5, "Public domain research resources."),
         NavItem("osint_ip", "IP Research", 5, "Public IP research resources."),
     )),
-    NavCategory("PARROT OS MANAGER", (
+    NavCategory("PARROT OS", (
         NavItem("sys_updates", "System Updates", 7, "APT update workflow with confirmation."),
         NavItem("sw_updates", "Software Updates", 7, "APT, Flatpak, Snap and git sources."),
         NavItem("cleanup", "System Cleanup", 7, "Scan, preview and dry-run cleanup."),
@@ -77,7 +77,7 @@ NAVIGATION: tuple[NavCategory, ...] = (
         NavItem("project_history", "Project History", 9, "All projects and their activity."),
     )),
     NavCategory("SETTINGS", (
-        NavItem("settings_general", "General Settings", 1, "Startup, directories, logging."),
+        NavItem("settings_general", "General", 1, "Startup, directories, logging."),
         NavItem("settings_appearance", "Appearance", 1, "Theme and accent colour."),
         NavItem("settings_integrations", "Integrations", 2, "Tool integration options."),
         NavItem("settings_permissions", "Permissions", 8, "Privileged operation policy."),

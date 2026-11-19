@@ -1,110 +1,146 @@
-"""Contextual top bar: logo, workspace, global search, status, privilege, notifications, settings."""
+"""MATRIX PRO top bar: title + breadcrumbs, search/command-palette trigger, live status chips."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QCompleter, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu,
-                               QPushButton, QToolButton)
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QHBoxLayout, QFrame, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
-from ..database.repository import Database
-from .navigation import all_items, find_item
+from .design.components import Badge, StatusChip
+from .design.icons import icon
+from .design.tokens import T
+from .navigation import category_of, find_item
+from .notifications import NotificationPanel, NotificationService
 
 
 class TopBar(QFrame):
-    navigate = Signal(str)
+    open_palette = Signal()
     open_settings = Signal()
+    navigate = Signal(str)
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, notifications: NotificationService) -> None:
         super().__init__()
         self.setObjectName("topbar")
-        self.setFixedHeight(48)
-        self._db = db
+        self.setFixedHeight(T.topbar_height)
+        self.notifications = notifications
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(14, 0, 14, 0)
-        lay.setSpacing(12)
+        lay.setContentsMargins(22, 0, 18, 0)
+        lay.setSpacing(10)
 
-        logo = QLabel("WIFI CENTER")
-        logo.setObjectName("logo")
-        self.workspace = QLabel("Overview")
-        self.workspace.setObjectName("workspace")
+        left = QVBoxLayout()
+        left.setSpacing(0)
+        left.setContentsMargins(0, 8, 0, 8)
+        self.crumbs = QLabel("")
+        self.crumbs.setObjectName("crumbs")
+        self.heading = QLabel("Overview")
+        self.heading.setObjectName("pageHeading")
+        self.subtitle = QLabel("")
+        self.subtitle.setObjectName("pageSub")
+        self.subtitle.hide()
+        for w in (self.crumbs, self.heading):
+            left.addWidget(w)
+        left.addWidget(self.subtitle)
+        lay.addLayout(left, 2)
 
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search pages…  (Ctrl+K)")
-        self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(240)
-        self.search.setMaximumWidth(420)
-        titles = {f"{i.title}": i.id for i in all_items()}
-        self._titles = titles
-        comp = QCompleter(list(titles), self.search)
-        comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        comp.setFilterMode(Qt.MatchFlag.MatchContains)
-        self.search.setCompleter(comp)
-        comp.activated.connect(self._go)
-        self.search.returnPressed.connect(lambda: self._go(self.search.text()))
-
-        self.status = QLabel("●  Starting…")
-        self.status.setObjectName("statusPill")
-        self.status.setToolTip("Local connectivity (no packets are sent to check this)")
-        self.priv = QLabel("Unprivileged")
-        self.priv.setObjectName("privPill")
-        self.priv.setProperty("active", False)
-        self.priv.setToolTip("Privileged session indicator. The GUI always runs as your normal user.")
-
-        self.notif = QToolButton()
-        self.notif.setText("Notifications")
-        self.notif.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.notif.setMenu(QMenu(self.notif))
-        self.notif.menu().aboutToShow.connect(self._fill_notifications)
-        self.settings_btn = QPushButton("Settings")
-        self.settings_btn.clicked.connect(self.open_settings)
-
-        lay.addWidget(logo)
-        lay.addWidget(self.workspace)
-        lay.addStretch(1)
+        self.search = QPushButton("  Search pages, tools, projects…")
+        self.search.setObjectName("searchField")
+        self.search.setIcon(icon("search", T.text_muted, 16))
+        self.search.setMinimumWidth(260)
+        self.search.setMaximumWidth(460)
+        self.search.setFixedHeight(36)
+        self.search.setToolTip("Command palette (Ctrl+K)")
+        self.search.setCursor(Qt.CursorShape.IBeamCursor)
+        self.search.clicked.connect(self.open_palette)
+        kb = QLabel("Ctrl K", self.search)
+        kb.setObjectName("faint")
+        kb.setStyleSheet(f"border: 1px solid {T.border}; border-radius: 4px; padding: 1px 5px;")
+        self._kb = kb
         lay.addWidget(self.search, 3)
+
         lay.addStretch(1)
-        for w in (self.status, self.priv, self.notif, self.settings_btn):
-            lay.addWidget(w)
+        self.net_chip = StatusChip("Checking…", T.text_muted)
+        self.wifi_chip = StatusChip("No adapter", T.text_muted)
+        self.ops_chip = StatusChip("Idle", T.text_muted)
+        self.priv_chip = StatusChip("Unprivileged", T.text_muted, icon_name="shield")
+        self.priv_chip.setToolTip("Privileged session indicator. The GUI always runs as your normal user.")
+        for c in (self.net_chip, self.wifi_chip, self.ops_chip, self.priv_chip):
+            lay.addWidget(c)
+        self.net_chip.setToolTip("Local connectivity (no packets are sent to check this)")
+        self.wifi_chip.setToolTip("Wireless adapter state")
+        self.ops_chip.setToolTip("Running operations (click for the Activity Monitor)")
+        self.ops_chip.clicked.connect(lambda: self.navigate.emit("activity"))
+        self.wifi_chip.clicked.connect(lambda: self.navigate.emit("wifi_center"))
+        self.net_chip.clicked.connect(lambda: self.navigate.emit("overview"))
+        self.priv_chip.clicked.connect(lambda: self.navigate.emit("root_access"))
+
+        self.bell = QToolButton()
+        self.bell.setIcon(icon("bell", T.text_secondary, 18))
+        self.bell.setToolTip("Notifications")
+        self.bell.setFixedSize(36, 32)
+        self.bell.clicked.connect(self._show_notifications)
+        self.bell_badge = Badge("", "error", self.bell)
+        self.bell_badge.hide()
+        self.gear = QToolButton()
+        self.gear.setIcon(icon("settings", T.text_secondary, 18))
+        self.gear.setToolTip("Settings (Ctrl+,)")
+        self.gear.setFixedSize(36, 32)
+        self.gear.clicked.connect(self.open_settings)
+        lay.addWidget(self.bell)
+        lay.addWidget(self.gear)
+
+        self.panel = NotificationPanel(notifications, self)
+        self.panel.changed.connect(self.refresh_notification_count)
+        notifications.listeners.append(self.refresh_notification_count)
         self.refresh_notification_count()
 
-    def focus_search(self) -> None:
-        self.search.setFocus()
-        self.search.selectAll()
+    @property
+    def workspace(self) -> QLabel:  # compatibility alias
+        return self.heading
 
-    def set_workspace(self, title: str) -> None:
-        self.workspace.setText(title)
+    # ---- title / breadcrumbs ----
+    def set_page(self, page_id: str) -> None:
+        item = find_item(page_id)
+        if not item:
+            return
+        self.heading.setText(item.title)
+        cat = category_of(page_id) or ""
+        self.crumbs.setText(f"WIFI Center  ›  {cat.title()}  ›  {item.title}")
+        self.subtitle.setText(item.summary)
+        self.subtitle.setVisible(bool(item.summary))
 
+    def set_workspace(self, title: str) -> None:  # compatibility with older callers
+        self.heading.setText(title)
+
+    # ---- indicators (all driven by real data) ----
     def set_connectivity(self, online: bool) -> None:
-        self.status.setText("●  Network up" if online else "●  No network")
-        self.status.setStyleSheet("color: %s" % ("#00FF66" if online else "#F2B84B"))
+        self.net_chip.set_state("Online" if online else "Offline", T.success if online else T.warning)
 
-    def _go(self, text: str) -> None:
-        page = self._titles.get(text)
-        if page is None:  # fall back to first case-insensitive match
-            t = text.strip().lower()
-            page = next((i.id for i in all_items() if t and t in i.title.lower()), None)
-        if page:
-            self.navigate.emit(page)
-            self.search.clear()
+    def set_wifi(self, text: str, color: str) -> None:
+        self.wifi_chip.set_state(text, color)
+
+    def set_operations(self, running: int) -> None:
+        if running:
+            self.ops_chip.set_state(f"{running} running", T.info, pulse=True)
+        else:
+            self.ops_chip.set_state("Idle", T.text_muted)
+
+    def set_privileged(self, active: bool, text: str | None = None) -> None:
+        self.priv_chip.set_state(text or ("Privileged" if active else "Unprivileged"),
+                                 T.warning if active else T.text_muted)
 
     def refresh_notification_count(self) -> None:
-        row = self._db.query_one("SELECT COUNT(*) AS n FROM notifications WHERE read = 0")
-        n = row["n"] if row else 0
-        self.notif.setText(f"Notifications ({n})" if n else "Notifications")
+        n = self.notifications.unread()
+        self.bell_badge.setText(str(min(n, 99)))
+        self.bell_badge.adjustSize()
+        self.bell_badge.setVisible(n > 0)
+        self.bell_badge.move(self.bell.width() - self.bell_badge.width() - 1, 0)
 
-    def _fill_notifications(self) -> None:
-        menu = self.notif.menu()
-        menu.clear()
-        rows = self._db.query("SELECT id, level, title, created_at, read FROM notifications "
-                              "ORDER BY id DESC LIMIT 10")
-        if not rows:
-            a = menu.addAction("No notifications")
-            a.setEnabled(False)
-            return
-        for r in rows:
-            menu.addAction(f"[{r['level']}] {r['title']}  ({r['created_at']})")
-        menu.addSeparator()
-        menu.addAction("Mark all as read", self._mark_read)
+    def _show_notifications(self) -> None:
+        self.panel.popup_at(self.bell.mapToGlobal(QPoint(self.bell.width(), self.bell.height() + 6)))
 
-    def _mark_read(self) -> None:
-        self._db.execute("UPDATE notifications SET read = 1")
-        self.refresh_notification_count()
+    def resizeEvent(self, e) -> None:  # noqa: N802
+        super().resizeEvent(e)
+        self._kb.adjustSize()
+        self._kb.move(self.search.width() - self._kb.width() - 10, (self.search.height() - self._kb.height()) // 2)
+
+    def focus_search(self) -> None:
+        self.open_palette.emit()
