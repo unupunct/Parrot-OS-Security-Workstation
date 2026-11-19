@@ -371,3 +371,11 @@ def test_placeholder_alias_is_not_a_name():
     assert parse_devices("Device 4D:77:D2:94:3E:86 4D-77-D2-94-3E-86")[0].name == ""
     d = parse_info("Device 4D:77:D2:94:3E:86 (random)" + chr(10) + chr(9) + "Alias: 4D-77-D2-94-3E-86" + chr(10), "4D:77:D2:94:3E:86")
     assert d.name == ""
+
+
+def test_form_factor_is_inferred_from_bus_and_chassis():
+    from wifi_center.services.adapter_service import form_factor_of
+    assert form_factor_of("usb", 13) == "usb" and form_factor_of("usb", 3) == "usb"
+    assert form_factor_of("pci", 3) == "pcie" and form_factor_of("pci", None) == "pcie"            # desktop tower: an add-in card
+    assert [form_factor_of("pci", c) for c in (9, 10, 13, 31)] == ["m2"] * 4                       # laptop / all-in-one: internal module
+    assert form_factor_of("sdio", 9) == "unknown" and form_factor_of(None, None) == "unknown"

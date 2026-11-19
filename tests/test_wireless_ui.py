@@ -223,3 +223,24 @@ class SimpleAdapter:
         self.state, self.mac, self.driver, self.manufacturer = "down", "aa:bb", "ath9k", ""
         self.vendor_id = self.product_id = ""
         self.bands, self.connected_ssid, self.phy = ["2.4 GHz"], None, "phy1"
+        self.bus, self.form_factor = "usb", "usb"
+
+
+def test_adapter_page_shows_hardware_kind_chips_and_checks(qapp, controller):
+    from wifi_center.ui.pages import wireless_pages as wp
+    page = wp.AdapterPage(controller)
+    wait(600)
+    cases = [("usb", "usb", "usb", "USB"), ("pci", "m2", "m2", "PCIe (internal module)"), ("pci", "pcie", "pcie", "PCIe"),
+             (None, "unknown", "generic", "unknown bus")]
+    for bus, ff, kind, label in cases:
+        a = SimpleAdapter("wlx9", True)
+        a.bus, a.form_factor, a.bands, a.driver, a.state = bus, ff, ["2.4 GHz", "5 GHz"], "ath9k", "up"
+        page._adapters = [a]
+        page.list.clear()
+        page.list.addItem("wlx9")
+        page.list.setCurrentRow(0)
+        page._show(0)
+        assert page.art.kind == kind and label in [page.chips.itemAt(i).widget().text() for i in range(page.chips.count() - 1)]
+    texts = [page.checks.itemAt(i).widget().layout().itemAt(1).widget().text() for i in range(page.checks.count() - 1)]
+    assert texts == ["Driver loaded (ath9k)", "Monitor mode supported", "2 bands detected"]
+    assert "Illustrative" not in page.kind_lbl.text() and "inferred" in page.kind_lbl.text() or page.art.kind == "generic"

@@ -22,6 +22,22 @@ class WirelessAdapter:
     monitor_capable: bool | None = None  # None = could not determine
     connected_ssid: str | None = None
     phy: str | None = None
+    bus: str | None = None            # usb | pci | sdio | platform ... (from the device's sysfs subsystem)
+    form_factor: str = "unknown"      # usb | pcie | m2 | unknown (see form_factor_of)
+
+
+# DMI chassis types of machines whose PCI Wi-Fi is an internal module (mini-PCIe / M.2), not an add-in card:
+# 8 portable, 9 laptop, 10 notebook, 11 handheld, 13 all-in-one, 14 sub-notebook, 30 tablet, 31 convertible, 32 detachable
+MOBILE_CHASSIS = {8, 9, 10, 11, 13, 14, 30, 31, 32}
+
+
+def form_factor_of(bus: str | None, chassis_type: int | None) -> str:
+    """The kernel does not report a card's physical form factor, so this is inferred from the bus and the machine's chassis type."""
+    if bus == "usb":
+        return "usb"
+    if bus == "pci":
+        return "m2" if chassis_type in MOBILE_CHASSIS else "pcie"
+    return "unknown"
 
 
 def parse_iw_phy_info(text: str) -> dict[str, dict]:
@@ -69,8 +85,9 @@ def _read(p: Path) -> str | None:
 
 
 class AdapterService:
-    def __init__(self, sysfs_net: Path = Path("/sys/class/net")) -> None:
+    def __init__(self, sysfs_net: Path = Path("/sys/class/net"), chassis: Path = Path("/sys/class/dmi/id/chassis_type")) -> None:
         self._sysfs = sysfs_net
+        self._chassis = chassis
 
     def supported(self) -> bool:
         return self._sysfs.is_dir()
@@ -93,6 +110,12 @@ class AdapterService:
             a.product_id = _read(dev / "device") or _read(dev.resolve().parent / "idProduct")
             phy = iface / "phy80211" / "name"
             a.phy = _read(phy)
+            try:
+                a.bus = (dev / "subsystem").resolve().name or None
+            except OSError:
+                a.bus = None
+            chassis = _read(self._chassis)
+            a.form_factor = form_factor_of(a.bus, int(chassis) if chassis and chassis.isdigit() else None)
             adapters.append(a)
         self._enrich_with_iw(adapters)
         return adapters
