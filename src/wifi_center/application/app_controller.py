@@ -6,7 +6,14 @@ from pathlib import Path
 
 from ..database.repository import Database
 from ..services.adapter_service import AdapterService
+from ..services.apt_service import AptService
 from ..services.backup_service import BackupService
+from ..services.cleanup_service import CleanupService
+from ..services.maintenance_service import MaintenanceService
+from ..services.package_service import PackageService
+from ..services.privileged_service import UnavailableBackend
+from ..services.software_sources import SoftwareSources
+from ..services.system_info_service import SystemInfoService
 from ..security.audit_log import AuditLog
 from ..services.operation_manager import OperationManager
 from ..services.bluetooth_service import BluetoothService
@@ -61,6 +68,14 @@ class AppController:
         self.local_resources = LibraryService(
             self.db, lambda: Path(self.settings.get("general.local_resources_dir")
                                   or self.paths.default_resources_dir.parent / "Local"), "local")
+        self.maintenance = MaintenanceService(self.db)
+        self.privileged = UnavailableBackend()          # replaced by the Polkit helper in Phase 8
+        self.apt = AptService()
+        self.packages = PackageService(self.apt)
+        self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)
+        self.software = SoftwareSources(self.apt)
+        self.cleanup = CleanupService(self.maintenance, self.apt, self.privileged,
+                                      app_log_dir=self.paths.log_dir)
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)

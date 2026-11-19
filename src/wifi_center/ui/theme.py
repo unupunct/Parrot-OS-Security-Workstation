@@ -110,6 +110,15 @@ QHeaderView::section { background: %(background_secondary)s; color: %(text_secon
     padding: 7px 6px; font-weight: 700; font-size: 12px; }
 QTableCornerButton::section { background: %(background_secondary)s; border: none; }
 
+QTreeWidget, QTreeView { background: %(panel)s; border: 1px solid %(border)s; border-radius: 8px;
+    alternate-background-color: %(background_secondary)s; show-decoration-selected: 1; }
+QTreeView::item { padding: 4px 2px; }
+QTreeView::item:selected { background: %(accent_tint2)s; color: %(green)s; }
+QTreeView::item:hover:!selected { background: %(panel_hover)s; }
+QTreeView::indicator, QTableView::indicator, QListView::indicator { width: 16px; height: 16px; border: 1px solid %(border_active)s;
+    border-radius: 4px; background: %(panel)s; }
+QTreeView::indicator:checked, QTableView::indicator:checked, QListView::indicator:checked { background: %(green)s; border-color: %(green)s; }
+QTreeView::indicator:disabled { border-color: %(border)s; }
 QTabWidget::pane { border: 1px solid %(border)s; border-radius: 8px; top: -1px; background: %(background_secondary)s; }
 QTabBar::tab { background: transparent; padding: 8px 16px; color: %(text_secondary)s; border: none; border-bottom: 2px solid transparent; }
 QTabBar::tab:hover { color: %(text)s; }

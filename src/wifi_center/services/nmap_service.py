@@ -176,7 +176,7 @@ class NmapService:
                                "hosts": hosts}, indent=2, default=str)
         if fmt == "csv":
             buf = io.StringIO()
-            w = csv.writer(buf)
+            w = csv.writer(buf, lineterminator="\n")
             w.writerow(["address", "hostname", "mac", "vendor", "os_guess", "status", "port", "proto", "state",
                         "service", "product", "version"])
             for h in hosts:

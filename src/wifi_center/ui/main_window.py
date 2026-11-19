@@ -21,7 +21,10 @@ from .navigation import find_item
 from .pages.activity_page import ActivityPage
 from .pages.assessment_pages import AssessmentPage, PasswordAuditPage, WebSecurityPage
 from .pages.bluetooth_page import BluetoothPage
+from .pages.cleanup_pages import CleanupPage, MaintenancePage
 from .pages.discovery_pages import NetworkDiscoveryPage, NetworkMappingPage
+from .pages.parrot_pages import (PackageManagerPage, ParrotOverviewPage, SoftwareUpdatesPage, SystemInfoPage,
+                                 SystemUpdatesPage)
 from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.osint_pages import OsintWorkspacePage
@@ -165,6 +168,13 @@ class MainWindow(QMainWindow):
             "assessment": lambda: AssessmentPage(self.app),
             "web_security": self._make_web_security,
             "password_audit": lambda: PasswordAuditPage(self.app),
+            "system_hw": lambda: ParrotOverviewPage(self.app, self.sidebar.select_page),
+            "sys_info": lambda: SystemInfoPage(self.app),
+            "sys_updates": lambda: SystemUpdatesPage(self.app),
+            "sw_updates": lambda: SoftwareUpdatesPage(self.app),
+            "packages": lambda: PackageManagerPage(self.app),
+            "cleanup": lambda: CleanupPage(self.app),
+            "maintenance": lambda: MaintenancePage(self.app),
             "wordlists": lambda: ResourceLibraryPage(self.app, "wordlists"),
             "local_resources": lambda: ResourceLibraryPage(self.app, "local"),
             "docs": lambda: DocumentationPage(self.app),

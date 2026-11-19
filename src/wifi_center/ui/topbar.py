@@ -103,7 +103,8 @@ class TopBar(QFrame):
             return
         self.heading.setText(item.title)
         cat = category_of(page_id) or ""
-        self.crumbs.setText(f"WIFI Center  ›  {cat.title()}  ›  {item.title}")
+        group = cat.title().replace(" Os", " OS")
+        self.crumbs.setText(f"WIFI Center  ›  {group}  ›  {item.title}")
         self.subtitle.setText(item.summary)
         self.subtitle.setVisible(bool(item.summary))
 

@@ -280,7 +280,7 @@ class OsintService:
                                "notes": [{"body": n["body"], "created_at": n["created_at"]} for n in notes]}, indent=2)
         if fmt == "csv":
             buf = io.StringIO()
-            w = csv.writer(buf)
+            w = csv.writer(buf, lineterminator="\n")
             w.writerow(["recorded_at", "search_term", "resource", "result", "url", "notes"])
             for r in recs:
                 w.writerow([_csv_safe(v) for v in (r["recorded_at"], r["search_term"], r["resource"],

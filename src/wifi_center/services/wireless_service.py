@@ -245,7 +245,7 @@ class WirelessService:
             return json.dumps([{k: r.get(k) for k in self.COLUMNS} for r in rows], indent=2)
         if fmt == "csv":
             buf = io.StringIO()
-            w = csv.writer(buf)
+            w = csv.writer(buf, lineterminator="\n")
             w.writerow(self.COLUMNS)
             for r in rows:
                 w.writerow([_csv_safe(r.get(k)) for k in self.COLUMNS])
