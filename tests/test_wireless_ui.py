@@ -167,3 +167,59 @@ def test_5ghz_graph_uses_equal_channel_slots():
     from wifi_center.ui.pages import spectrum_page as sp
     assert sp.slot_x(36) == 0 and sp.slot_x(40) == 1 and sp.slot_x(64) == 7 and sp.slot_x(100) == 8      # no empty gap drawn
     assert sp.slot_x(30) == 0 and sp.slot_x(200) == len(sp.CHANNELS_5) - 1 and 0 < sp.slot_x(42) - sp.slot_x(40) < 1
+
+
+def test_adapter_page_monitor_mode_goes_through_the_helper(qapp, controller, monkeypatch):
+    from wifi_center.services.privileged_service import ExecutionResult
+    from wifi_center.ui.pages import wireless_pages as wp
+
+    class Backend:
+        name = "fake"
+
+        def __init__(self, up=True):
+            self.up, self.ops = up, []
+
+        def available(self):
+            return self.up
+
+        def explain_unavailable(self):
+            return "no helper"
+
+        def start(self, op, on_output, on_done):
+            self.ops.append((op.kind, op.iface))
+            on_output("switching")
+            on_done(ExecutionResult(True, True, "done"))
+
+    controller.privileged = b = Backend(up=False)
+    page = wp.AdapterPage(controller)
+    wait(600)
+    adapters = [SimpleAdapter("wlx1", True), SimpleAdapter("wlx2", False)]
+    page._adapters = adapters
+    page.list.clear()
+    for x in adapters:
+        page.list.addItem(x.interface)
+    page.list.setCurrentRow(0)
+    assert not page.mon_btn.isEnabled() and "helper" in page.mon_btn.toolTip()          # no helper: cannot switch
+    controller.privileged = b = Backend(up=True)
+    page.list.setCurrentRow(1)
+    page.list.setCurrentRow(0)
+    assert page.mon_btn.isEnabled() and page.res_btn.isEnabled()
+    page.list.setCurrentRow(1)
+    assert not page.mon_btn.isEnabled() and "does not support" in page.mon_btn.toolTip()     # adapter cannot do monitor mode
+    page.list.setCurrentRow(0)
+    monkeypatch.setattr(wp, "confirm_dialog", lambda *a, **k: False)
+    page._set_mode(True)
+    assert b.ops == []                                                                     # declining does nothing
+    monkeypatch.setattr(wp, "confirm_dialog", lambda *a, **k: True)
+    page._set_mode(True)
+    page._set_mode(False)
+    assert b.ops == [("iface_monitor", "wlx1"), ("iface_restore", "wlx1")]
+    assert "switching" in page.diag.toPlainText() and any(e["event"] == "wifi.mode" for e in controller.audit.tail(5))
+
+
+class SimpleAdapter:
+    def __init__(self, name, monitor):
+        self.interface, self.monitor_capable = name, monitor
+        self.state, self.mac, self.driver, self.manufacturer = "down", "aa:bb", "ath9k", ""
+        self.vendor_id = self.product_id = ""
+        self.bands, self.connected_ssid, self.phy = ["2.4 GHz"], None, "phy1"

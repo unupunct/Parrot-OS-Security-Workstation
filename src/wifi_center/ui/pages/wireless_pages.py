@@ -18,14 +18,16 @@ from PySide6.QtWidgets import QTabWidget
 
 from ..charts import NumItem, color, fmt_ts, make_plot, make_table, signal_bars
 from ..design.components import LoadingIndicator, StatusChip
+from ..design.terminal_view import TerminalView
 from ..design.tokens import T
 from ..radar import RadarWidget
+from .netsec_common import confirm_dialog
 
 esc = html.escape
 
 
 class AdapterPage(QWidget):
-    """Read-only adapter inventory and driver diagnostics."""
+    """Adapter inventory, driver diagnostics and (through the privileged helper) monitor-mode switching."""
 
     def __init__(self, app: AppController) -> None:
         super().__init__()
@@ -43,8 +45,9 @@ class AdapterPage(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         head.addWidget(self.refresh_btn)
         lay.addLayout(head)
-        note = QLabel("Adapter manager. Changing interface state (monitor mode, up/down) needs root and is not "
-                      "available until the privileged helper arrives in Phase 8; this page only reads state.")
+        note = QLabel("Adapter manager. Reading state needs no privileges. Switching an adapter to monitor mode (and back) goes "
+                      "through the privileged helper after you confirm and authenticate; the helper saves the previous mode "
+                      "and restores it on request.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         lay.addWidget(note)
@@ -61,11 +64,15 @@ class AdapterPage(QWidget):
         self.diag_btn = QPushButton("Run driver diagnostics")
         self.diag_btn.clicked.connect(self._diagnostics)
         row.addWidget(self.diag_btn)
+        self.mon_btn = QPushButton("Switch to monitor mode…")
+        self.mon_btn.clicked.connect(lambda: self._set_mode(True))
+        self.res_btn = QPushButton("Restore normal mode")
+        self.res_btn.clicked.connect(lambda: self._set_mode(False))
+        row.addWidget(self.mon_btn)
+        row.addWidget(self.res_btn)
         row.addStretch(1)
         rl.addLayout(row)
-        self.diag = QPlainTextEdit()
-        self.diag.setReadOnly(True)
-        self.diag.setStyleSheet("font-family: 'DejaVu Sans Mono','Consolas',monospace;")
+        self.diag = TerminalView()
         rl.addWidget(self.diag, 3)
         split.addWidget(right)
         split.setStretchFactor(1, 3)
@@ -110,6 +117,51 @@ class AdapterPage(QWidget):
             f"<tr><td style='color:{T.text_secondary}'>{esc(k)}</td><td>{esc(v)}</td></tr>" for k, v in rows) + "</table>"
             f"<p style='color:{T.text_secondary}'>Chipset is not reported by the kernel; the vendor:device ID above identifies it.</p>")
         self.diag.clear()
+        self._sync_mode_buttons()
+
+    def _sync_mode_buttons(self) -> None:
+        a = self._current()
+        helper = self.app.privileged.available()
+        ok = bool(a) and helper and a.monitor_capable is not False
+        tip = ("" if helper else "The privileged helper is not installed (see Root Access Manager).")
+        if a and a.monitor_capable is False:
+            tip = "This adapter does not support monitor mode."
+        for b in (self.mon_btn, self.res_btn):
+            b.setEnabled(ok)
+            b.setToolTip(tip)
+
+    def _set_mode(self, monitor: bool) -> None:
+        a = self._current()
+        if not a:
+            return
+        from ...services.privileged_service import PrivilegedOp, run_privileged
+        if monitor:
+            busy = f"<p style='color:{T.warning}'><b>{esc(a.interface)} is connected to {esc(a.connected_ssid)}.</b> " \
+                   "Switching it will disconnect it.</p>" if a.connected_ssid else ""
+            text = (f"<p>Switch <b>{esc(a.interface)}</b> to monitor mode?</p>{busy}"
+                    "<p>The adapter stops being a normal Wi-Fi client until you restore it. NetworkManager is told to leave it "
+                    "alone, and the helper remembers its previous mode so <b>Restore normal mode</b> can undo this. "
+                    "Do not use the adapter that carries your internet connection. You will be asked to authenticate.</p>")
+            if not confirm_dialog(self, "Monitor mode", text, "Switch to monitor mode",
+                                  "I understand this adapter will stop working as a normal Wi-Fi client until restored." if a.connected_ssid else None):
+                return
+            op = PrivilegedOp("iface_monitor", iface=a.interface)
+        else:
+            if not confirm_dialog(self, "Restore normal mode", f"<p>Restore <b>{esc(a.interface)}</b> to the mode it had before WIFI Center "
+                                  "switched it? You will be asked to authenticate.</p>", "Restore"):
+                return
+            op = PrivilegedOp("iface_restore", iface=a.interface)
+        self.app.audit.record("wifi.mode", interface=a.interface, monitor=monitor)
+        self.diag.clear()
+        self.diag.command(op.summary(), "run by the privileged helper after you authenticate")
+        self.mon_btn.setEnabled(False)
+        self.res_btn.setEnabled(False)
+
+        def done(res) -> None:
+            (self.diag.ok if res.ok else self.diag.error)(res.message)
+            self.refresh()
+
+        run_privileged(self.app.privileged, op, self.diag.appendPlainText, done)
 
     def _diagnostics(self) -> None:
         a = self._current()
