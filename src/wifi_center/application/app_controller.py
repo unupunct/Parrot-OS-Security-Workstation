@@ -111,6 +111,10 @@ class AppController:
         self.btinspector = BluetoothDeviceInspector(self._bt, self.btinventory)
         self.btble = BLEExplorer(self._bt, self.btinventory, self.audit.record)
         self.btauditor = BluetoothSecurityAuditor(self._bt, self.db, self.btinventory, self.btdevices, self.btble, self.audit.record)
+        from ..bluetooth.packets import BluetoothPacketAnalyzer
+        from ..bluetooth.reports import BluetoothReportGenerator
+        self.btpackets = BluetoothPacketAnalyzer(self.paths.data_dir / "bluetooth-captures")
+        self.btreports = BluetoothReportGenerator(self.btinventory, self.btauditor)
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)
         self.audit.record("app.start")

@@ -19,6 +19,8 @@ PROTOCOL_VERSION = 1
 
 PKG_RE = re.compile(r"^[a-z0-9][a-z0-9+.\-]{1,100}(:[a-z0-9\-]+)?$")
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,15}$")
+HCI_RE = re.compile(r"^hci\d{1,3}$")
+MAX_CAPTURE_SECONDS = 600
 UNIT_RE = re.compile(r"^[A-Za-z0-9@:_.\-]{1,100}\.service$")
 MAX_PACKAGES = 2000
 MAX_PATHS = 50_000
@@ -52,6 +54,9 @@ ACTIONS: tuple[Action, ...] = (
     Action("org.wificenter.helper.network-interface", "Wireless interface mode",
            "Switch a wireless interface to monitor mode and restore it afterwards.",
            ("iface_monitor", "iface_restore")),
+    Action("org.wificenter.helper.bluetooth-capture", "Bluetooth packet capture",
+           "Record the HCI traffic of one Bluetooth controller with btmon for a limited time. The capture file is handed to the requesting user.",
+           ("bt_capture",)),
     Action("org.wificenter.helper.diagnostics", "System diagnostics",
            "Read the system journal and service status (read-only).", ("diag_journal", "diag_unit_status")),
 )
@@ -96,6 +101,7 @@ class PrivilegedOp:
     iface: str = ""
     unit: str = ""
     manifest: Manifest | None = None
+    seconds: int = 0
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -113,6 +119,11 @@ class PrivilegedOp:
                 raise ProtocolError("remove_system_files needs 1..%d paths" % MAX_PATHS)
         if self.kind in ("iface_monitor", "iface_restore") and not IFACE_RE.match(self.iface):
             raise ProtocolError(f"invalid interface name: {self.iface!r}")
+        if self.kind == "bt_capture":
+            if not HCI_RE.match(self.iface):
+                raise ProtocolError(f"invalid Bluetooth controller: {self.iface!r}")
+            if not 1 <= self.seconds <= MAX_CAPTURE_SECONDS:
+                raise ProtocolError(f"capture length must be 1..{MAX_CAPTURE_SECONDS} seconds")
         if self.kind == "diag_unit_status" and not UNIT_RE.match(self.unit):
             raise ProtocolError(f"invalid service unit: {self.unit!r}")
 
@@ -131,13 +142,15 @@ class PrivilegedOp:
             bits.append(f"interface {self.iface}")
         if self.unit:
             bits.append(self.unit)
+        if self.seconds:
+            bits.append(f"{self.seconds} s")
         return " · ".join(bits)
 
 
 def op_to_json(op: PrivilegedOp) -> str:
     d = {"v": PROTOCOL_VERSION, "kind": op.kind, "packages": list(op.packages), "paths": list(op.paths),
          "category": op.category, "iface": op.iface, "unit": op.unit,
-         "manifest": op.manifest.to_dict() if op.manifest else None}
+         "manifest": op.manifest.to_dict() if op.manifest else None, "seconds": op.seconds}
     return json.dumps(d, separators=(",", ":"))
 
 
@@ -159,7 +172,7 @@ def op_from_json(text: str) -> PrivilegedOp:
         raise ProtocolError("request is not valid JSON") from None
     if not isinstance(d, dict):
         raise ProtocolError("request must be an object")
-    allowed = {"v", "kind", "packages", "paths", "category", "iface", "unit", "manifest"}
+    allowed = {"v", "kind", "packages", "paths", "category", "iface", "unit", "manifest", "seconds"}
     extra = set(d) - allowed
     if extra:
         raise ProtocolError(f"unknown field(s): {sorted(extra)}")
@@ -168,6 +181,9 @@ def op_from_json(text: str) -> PrivilegedOp:
     for key in ("kind", "category", "iface", "unit"):
         if key in d and not isinstance(d[key], str):
             raise ProtocolError(f"{key} must be a string")
+    seconds = d.get("seconds", 0)
+    if isinstance(seconds, bool) or not isinstance(seconds, int):
+        raise ProtocolError("seconds must be an integer")
     manifest = None
     m = d.get("manifest")
     if m is not None:
@@ -177,7 +193,7 @@ def op_from_json(text: str) -> PrivilegedOp:
                               for k in ("installs", "upgrades", "removes")))
     return PrivilegedOp(d.get("kind", ""), tuple(validate_package_name(p) for p in _str_list(d.get("packages"), "packages", MAX_PACKAGES, 110)),
                         _str_list(d.get("paths"), "paths", MAX_PATHS), d.get("category", ""), d.get("iface", ""),
-                        d.get("unit", ""), manifest)
+                        d.get("unit", ""), manifest, seconds)
 
 
 # ---------------------------------------------------------------------------------------------- path rules

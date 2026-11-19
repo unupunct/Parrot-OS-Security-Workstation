@@ -12,6 +12,7 @@ The helper accepts a fixed list of operations, each re-validated as root; it is 
 | `org.wificenter.helper.maintenance` | `apt-get update/upgrade/dist-upgrade/install/reinstall/download-only/remove/autoremove/clean`, `apt-get install -f` (fix broken dependencies), `dpkg --configure -a` (finish an interrupted installation), purge of leftover package configs |
 | `org.wificenter.helper.cleanup-files` | delete old files in `/var/tmp` and rotated logs in `/var/log` (allow-listed roots, ages and name patterns) |
 | `org.wificenter.helper.network-interface` | put a wireless interface in monitor mode and restore it afterwards (saved state, rollback) |
+| `org.wificenter.helper.bluetooth-capture` | record one Bluetooth controller's HCI traffic with `btmon` for 1-600 s (the app offers 5-300); the capture file is private to you (mode 0600) |
 | `org.wificenter.helper.diagnostics` | read the system journal and a service's status (read-only) |
 
 Safety properties (all covered by `tests/test_privileged.py`):

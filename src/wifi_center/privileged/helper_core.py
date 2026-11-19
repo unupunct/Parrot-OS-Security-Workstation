@@ -31,10 +31,12 @@ EXE_CANDIDATES = {
     "apt-get": ("/usr/bin/apt-get",), "journalctl": ("/usr/bin/journalctl", "/bin/journalctl"),
     "systemctl": ("/usr/bin/systemctl", "/bin/systemctl"), "ip": ("/usr/sbin/ip", "/sbin/ip", "/usr/bin/ip", "/bin/ip"),
     "iw": ("/usr/sbin/iw", "/sbin/iw", "/usr/bin/iw"), "nmcli": ("/usr/bin/nmcli",),
-    "dpkg-query": ("/usr/bin/dpkg-query",), "dpkg": ("/usr/bin/dpkg",),
+    "dpkg-query": ("/usr/bin/dpkg-query",), "dpkg": ("/usr/bin/dpkg",), "btmon": ("/usr/bin/btmon", "/usr/sbin/btmon", "/usr/local/bin/btmon"),
 }
 TIMEOUTS = {"apt": 7200.0, "diag": 60.0, "files": 600.0, "iface": 60.0}
 STATE_DIR = "/run/wifi-center"
+CAPTURE_DIR = "/run/wifi-center/captures"
+CAPTURE_KEEP_SECONDS = 86400
 DPKG_STATE_FORMAT = "${db:Status-Abbrev}" + chr(9) + "${Package}" + chr(10)
 
 
@@ -375,6 +377,51 @@ class InterfaceManager:
                           f"{iface} restored to {mode}." if not failed else "Some restore steps failed; the saved state was kept so you can retry.")
 
 
+# ---------------------------------------------------------------------------------------------- bluetooth capture
+class BluetoothCapture:
+    """Records one controller's HCI traffic with btmon for a fixed time. The file is created by the helper with mode 0600 and
+    handed to the requesting user BEFORE btmon writes into it, so its content is never readable by other users, and the name is
+    chosen here (O_EXCL, no symlinks) so the caller cannot steer where root writes. Old captures are removed after a day."""
+
+    def __init__(self, spawner: Spawner, directory: str = CAPTURE_DIR, exists: Callable[[str], bool] = os.path.exists,
+                 now: Callable[[], float] = time.time, chown: Callable[[str, int, int], None] | None = None) -> None:
+        self.spawner, self.dir, self._exists, self._now = spawner, directory, exists, now
+        self._chown = chown
+
+    def _prune(self) -> None:
+        try:
+            for name in os.listdir(self.dir):
+                full = os.path.join(self.dir, name)
+                if name.startswith("bt-") and name.endswith(".btsnoop") and not os.path.islink(full) and self._now() - os.path.getmtime(full) > CAPTURE_KEEP_SECONDS:
+                    os.remove(full)
+        except OSError:
+            pass
+
+    def run(self, op: PrivilegedOp, emit: Emit, cancel: threading.Event, uid: int | None) -> ExecResult:
+        if uid is None:
+            return ExecResult(False, "refused", "The requesting user is unknown; a capture file cannot be handed over safely.")
+        btmon = find_exe("btmon", self._exists)
+        if not btmon:
+            return ExecResult(False, "refused", "btmon is not installed (sudo apt install bluez).")
+        os.makedirs(self.dir, mode=0o755, exist_ok=True)
+        self._prune()
+        path = os.path.join(self.dir, f"bt-{time.strftime('%Y%m%d-%H%M%S', time.gmtime(self._now()))}-{op.iface}.btsnoop")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        os.close(fd)
+        (self._chown or os.chown)(path, uid, -1)             # os.chown only exists on POSIX
+        emit("info", f"capturing {op.iface} for {op.seconds} s")
+        code, status = stream_command(self.spawner, [btmon, "-i", op.iface, "-w", path], emit, float(op.seconds), cancel)
+        size = os.path.getsize(path) if os.path.exists(path) else 0
+        if status == "failed":
+            if size == 0:
+                os.remove(path)
+            return ExecResult(False, "failed", f"btmon failed (exit code {code}); is {op.iface} a Bluetooth controller you can capture on?", code)
+        emit("info", f"capture-file: {path}")
+        if status == "cancelled":
+            return ExecResult(False, "cancelled", f"Stopped early; {size} bytes saved to {path}", code)
+        return ExecResult(True, "succeeded", f"Captured {size} bytes to {path}", 0)
+
+
 # ---------------------------------------------------------------------------------------------- the engine
 class HelperCore:
     def __init__(self, spawner: Spawner | None = None, fs: SafeFs | None = None, now: Callable[[], float] = time.time,
@@ -383,6 +430,7 @@ class HelperCore:
         self.fs = fs or PosixSafeFs()
         self.now, self.exists, self.proc_root = now, exists, proc_root
         self.interfaces = InterfaceManager(self.spawner, state_dir, exists)
+        self.capture = BluetoothCapture(self.spawner, exists=exists, now=now)
         self._lock = threading.Lock()
         self.current: str | None = None
 
@@ -390,19 +438,21 @@ class HelperCore:
     def busy(self) -> bool:
         return self._lock.locked()
 
-    def execute(self, op: PrivilegedOp, emit: Emit, cancel: threading.Event) -> ExecResult:
+    def execute(self, op: PrivilegedOp, emit: Emit, cancel: threading.Event, uid: int | None = None) -> ExecResult:
         if not self._lock.acquire(blocking=False):
             return ExecResult(False, "refused", "Another privileged operation is already running.")
         self.current = op.summary()
         try:
-            return self._run(op, emit, cancel)
+            return self._run(op, emit, cancel, uid)
         except ProtocolError as e:
             return ExecResult(False, "refused", str(e))
         finally:
             self.current = None
             self._lock.release()
 
-    def _run(self, op: PrivilegedOp, emit: Emit, cancel: threading.Event) -> ExecResult:
+    def _run(self, op: PrivilegedOp, emit: Emit, cancel: threading.Event, uid: int | None = None) -> ExecResult:
+        if op.kind == "bt_capture":
+            return self.capture.run(op, emit, cancel, uid)
         if op.kind == "remove_system_files":
             return remove_files(op, emit, self.fs, self.now(), cancel)
         if op.kind == "iface_monitor":

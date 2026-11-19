@@ -123,7 +123,7 @@ class HelperDispatcher:
                 self._signal(caller.bus_name, "Output", rec.op_id, stream, line)
 
             try:
-                result = self.core.execute(op, emit, rec.cancel)
+                result = self.core.execute(op, emit, rec.cancel, caller.uid)
             except Exception as e:  # never leave a client hanging
                 result = ExecResult(False, "failed", f"Internal error: {e}")
             rec.finished = True

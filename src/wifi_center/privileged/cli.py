@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     a = sub.add_parser("authorize")
-    a.add_argument("action", help="short name (maintenance, cleanup-files, network-interface, diagnostics) or full id")
+    a.add_argument("action", help="short name (maintenance, cleanup-files, network-interface, bluetooth-capture, diagnostics) or full id")
     r = sub.add_parser("run")
     r.add_argument("kind", choices=KINDS)
     r.add_argument("--package", action="append", default=[])

@@ -43,6 +43,16 @@
     </defaults>
   </action>
 
+  <action id="org.wificenter.helper.bluetooth-capture">
+    <description>Capture Bluetooth controller traffic</description>
+    <message>Authentication is required to record the HCI traffic of a Bluetooth controller</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
   <action id="org.wificenter.helper.diagnostics">
     <description>Read system diagnostics</description>
     <message>Authentication is required to read the system journal and service status</message>

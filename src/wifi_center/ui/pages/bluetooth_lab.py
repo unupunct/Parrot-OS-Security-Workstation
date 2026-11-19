@@ -2,7 +2,7 @@
 
 The page is a shell with eleven sections. Dashboard and Device Scanner live here; Signal Monitor, Adapter Diagnostics and Device
 Inventory are in bluetooth_lab_tools.py; the sections that act on a device (manager, inspector, BLE explorer, auditor) are in bluetooth_lab_stage2.py; the
-packet analyzer / reports arrive in the next stages and say so. If BlueZ cannot be reached over D-Bus the scanner falls back to the
+packet analyzer and reports are in bluetooth_lab_stage3.py. If BlueZ cannot be reached over D-Bus the scanner falls back to the
 original bluetoothctl scanner (still part of the page)."""
 from __future__ import annotations
 
@@ -32,8 +32,6 @@ esc = html.escape
 SECTIONS = (("dashboard", "Dashboard"), ("scanner", "Device Scanner"), ("manager", "Device Manager"), ("inspector", "Device Inspector"),
             ("ble", "BLE Explorer"), ("auditor", "Security Auditor"), ("signal", "Signal Monitor"), ("packets", "Packet Analyzer"),
             ("diag", "Adapter Diagnostics"), ("inventory", "Device Inventory"), ("reports", "Reports"))
-NEXT_STAGE = {"packets": "HCI capture with btmon and decoding with tshark (needs a privileged-helper operation).",
-              "reports": "HTML and PDF reports from the inventory and the auditor's findings."}
 QUALITY_COLOR = {"good": T.green, "fair": T.warning, "weak": T.danger, "unknown": T.text_muted}
 
 
@@ -55,6 +53,7 @@ class LabState(QObject):
         self.devices: list[DeviceInfo] = []
         self.cancel: threading.Event | None = None
         self.mode = "both"
+        self.analysis = None                       # the capture open in the Packet Analyzer (used by Reports)
 
     @property
     def running(self) -> bool:
@@ -122,10 +121,8 @@ class BluetoothLabPage(QWidget):
         self.nav.setFixedWidth(250)
         self.nav.setSpacing(2)
         for key, title in SECTIONS:
-            it = QListWidgetItem(title + ("   ·  next stage" if key in NEXT_STAGE else ""))
+            it = QListWidgetItem(title)
             it.setData(Qt.ItemDataRole.UserRole, key)
-            if key in NEXT_STAGE:
-                it.setForeground(QColor(T.text_muted))
             self.nav.addItem(it)
         lay.addWidget(self.nav)
         self.stack = QStackedWidget()
@@ -137,34 +134,19 @@ class BluetoothLabPage(QWidget):
         self.diag = AdapterDiagnosticsView(self)
         self.inventory = InventoryView(self)
         from .bluetooth_lab_stage2 import AuditorView, BLEExplorerView, DeviceManagerView, InspectorView
+        from .bluetooth_lab_stage3 import PacketAnalyzerView, ReportsView
         self.views: dict[str, QWidget] = {"dashboard": self.dashboard, "scanner": self.scanner, "signal": self.signal, "diag": self.diag,
                                           "inventory": self.inventory, "manager": DeviceManagerView(self), "inspector": InspectorView(self),
-                                          "ble": BLEExplorerView(self), "auditor": AuditorView(self)}
+                                          "ble": BLEExplorerView(self), "auditor": AuditorView(self),
+                                          "packets": PacketAnalyzerView(self), "reports": ReportsView(self)}
         for key, _ in SECTIONS:
-            w = self.views.get(key) or self._next_stage(key)
-            self.views[key] = w
-            self.stack.addWidget(w)
+            self.stack.addWidget(self.views[key])
         self.nav.currentRowChanged.connect(lambda r: self.stack.setCurrentIndex(r))
         self.nav.setCurrentRow(0)
         self.state.adapters_changed.connect(lambda: None)
         self.state.refresh_adapters()
 
     scan_done = Signal()
-
-    def _next_stage(self, key: str) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        title = dict(SECTIONS)[key]
-        t = QLabel(title)
-        t.setObjectName("pageTitle")
-        lay.addWidget(t)
-        msg = QLabel(f"{NEXT_STAGE[key]}\n\nThis section is built in the next stage of the Bluetooth Lab. It is not available yet, so nothing here can be "
-                     "clicked: the dashboard, scanner, signal monitor, diagnostics and inventory already work.")
-        msg.setWordWrap(True)
-        msg.setObjectName("muted")
-        lay.addWidget(msg)
-        lay.addStretch(1)
-        return w
 
     def _live(self, devices) -> None:
         self.state.devices = devices

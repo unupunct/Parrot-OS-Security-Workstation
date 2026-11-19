@@ -10,6 +10,7 @@ from wifi_center.bluetooth.scanner import BluetoothScanner
 from wifi_center.bluetooth.signal_monitor import BluetoothSignalMonitor
 from wifi_center.ui.pages import bluetooth_lab as bl
 from wifi_center.ui.pages import bluetooth_lab_stage2 as bt_stage2
+from wifi_center.ui.pages import bluetooth_lab_stage3 as bt_stage3
 from wifi_center.ui.pages import bluetooth_lab_tools as bt_tools
 
 
@@ -61,7 +62,9 @@ def lab(qapp, controller, tmp_path, monkeypatch):
     controller.btinspector = BluetoothDeviceInspector(bt, controller.btinventory)
     controller.btble = BLEExplorer(bt, controller.btinventory, controller.audit.record)
     controller.btauditor = BluetoothSecurityAuditor(bt, controller.db, controller.btinventory, controller.btdevices, controller.btble)
-    for mod in (bl, bt_tools, bt_stage2):
+    from wifi_center.bluetooth.reports import BluetoothReportGenerator
+    controller.btreports = BluetoothReportGenerator(controller.btinventory, controller.btauditor)
+    for mod in (bl, bt_tools, bt_stage2, bt_stage3):
         monkeypatch.setattr(mod, "confirm_dialog", lambda *a, **k: (confirms.append(a[1]), True)[1])
     page = bl.BluetoothLabPage(controller)
     assert wait(qapp, lambda: len(page.state.adapters) == 1)
@@ -69,11 +72,11 @@ def lab(qapp, controller, tmp_path, monkeypatch):
     return page
 
 
-def test_navigation_lists_all_eleven_sections_and_marks_what_is_not_built_yet(qapp, lab):
+def test_navigation_lists_all_eleven_sections_and_all_are_built(qapp, lab):
     names = [lab.nav.item(i).text() for i in range(lab.nav.count())]
     assert [n.split("   ")[0] for n in names] == ["Dashboard", "Device Scanner", "Device Manager", "Device Inspector", "BLE Explorer", "Security Auditor",
                                                 "Signal Monitor", "Packet Analyzer", "Adapter Diagnostics", "Device Inventory", "Reports"]
-    assert [i for i, n in enumerate(names) if "next stage" in n] == [7, 10]
+    assert not any("next stage" in n for n in names)
     assert lab.stack.count() == 11
 
 
@@ -284,3 +287,78 @@ def test_auditor_is_gated_by_authorisation_and_explains_findings(qapp, lab):
     assert "Evidence" in text and "What to do" in text
     assert not any(len(c) > 2 and c[2] in ("Connect", "Pair", "WriteValue") for c in lab.bt.calls)
     assert v.history.count() == 1
+
+
+# ---------------------------------------------------------------------------- stage 3: packet analyzer and reports
+class FakeHelper:
+    """Stands in for the privileged helper: 'captures' by writing a btsnoop file, as the real helper hands one over."""
+
+    def __init__(self, path, ok=True, announce=True):
+        self.path, self.ok, self.announce, self.ops = path, ok, announce, []
+
+    def available(self):
+        return True
+
+    def start(self, op, on_output, on_done):
+        from types import SimpleNamespace
+        self.ops.append(op)
+        if self.ok:
+            on_output("> HCI Event: LE Meta")
+            if self.announce:
+                on_output(f"capture-file: {self.path}")
+        on_done(SimpleNamespace(ok=self.ok, message="Captured 300 bytes" if self.ok else "btmon failed"))
+
+
+def test_capture_runs_through_the_helper_then_shows_redacted_analysis(qapp, lab, tmp_path):
+    from tests.test_bluetooth_packets import KEY, SCENE, snoop
+    src = tmp_path / "helper" / "bt-20261119-000000-hci1.btsnoop"
+    src.parent.mkdir()
+    src.write_bytes(snoop(SCENE))
+    lab.app.privileged = FakeHelper(str(src))
+    v = lab.views["packets"]
+    assert v.ctrl.count() == 1 and v.b_cap.isEnabled() and not v.b_csv.isEnabled()
+    v.secs.setValue(20)
+    v.capture()
+    assert wait(qapp, lambda: v.table.rowCount() == 10)
+    op = lab.app.privileged.ops[0]
+    assert (op.kind, op.iface, op.seconds) == ("bt_capture", "hci1", 20) and "Capture Bluetooth traffic" in lab.confirms
+    assert v.saved.count() == 1 and v.b_csv.isEnabled() and "LE Secure Connections" in v.summary.toPlainText()
+    v.search.setText("pairing request")
+    assert v.table.rowCount() == 1
+    v.search.setText("")
+    for r in range(v.table.rowCount()):
+        v.table.selectRow(r)
+        qapp.processEvents()
+        assert KEY.hex().upper()[:4] not in v.detail.toPlainText().replace(" ", "")
+    secret_row = next(r for r in range(10) if v.rows[r].secret)
+    v.table.selectRow(secret_row)
+    qapp.processEvents()
+    assert "[redacted]" in v.detail.toPlainText()
+
+
+def test_failed_or_silent_capture_is_reported_not_faked(qapp, lab, tmp_path):
+    lab.app.privileged = FakeHelper(str(tmp_path / "x.btsnoop"), ok=False)
+    v = lab.views["packets"]
+    v.capture()
+    assert wait(qapp, lambda: "btmon failed" in v.msg.text())
+    assert v.analysis is None and v.table.rowCount() == 0 and v.saved.count() == 0
+
+
+def test_reports_view_previews_and_writes(qapp, lab, tmp_path, monkeypatch):
+    path = remember_speaker(lab)
+    lab.app.btinventory.set_info(SPEAKER, authorized=True)
+    lab.app.btauditor.audit_device(SPEAKER)
+    v = lab.views["reports"]
+    v.reload()
+    assert v.devs.count() == 1 and all(v.devs.item(i).checkState() for i in range(v.devs.count()))
+    v.preview()
+    assert "Bluetooth Security Report" in v.view.toPlainText() and "Evidence." in v.view.toPlainText()
+    for fmt in ("HTML", "PDF", "JSON", "CSV"):
+        out = tmp_path / f"r.{fmt.lower()}"
+        monkeypatch.setattr(bt_stage3.QFileDialog, "getSaveFileName", staticmethod(lambda *a, out=out, **k: (str(out), "")))
+        v.fmt.setCurrentText(fmt)
+        v.generate()
+        assert wait(qapp, lambda: out.exists() and out.stat().st_size > 100), fmt
+    v._check(False)
+    v.generate()
+    assert "at least one device" in v.msg.text()
