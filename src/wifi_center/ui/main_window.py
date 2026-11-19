@@ -30,6 +30,7 @@ from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.osint_pages import OsintWorkspacePage
 from .pages.planned import PlannedPage
+from .pages.project_pages import EvidencePage, ProjectHistoryPage, ReportsPage
 from .pages.lan_scanner_page import LanScannerPage
 from .pages.sysinfo_page import SystemInfoPage as SpeccyInfoPage
 from .pages.root_access_page import PrivilegeMonitor, RootAccessPage
@@ -180,6 +181,8 @@ class MainWindow(QMainWindow):
             "lan_scanner": lambda: LanScannerPage(self.app),
             "net_mapping": lambda: NetworkMappingPage(self.app),
             "assessment": lambda: AssessmentPage(self.app),
+            "reports": lambda: ReportsPage(self.app), "evidence": lambda: EvidencePage(self.app),
+            "project_history": lambda: ProjectHistoryPage(self.app),
             "web_security": self._make_web_security,
             "password_audit": lambda: PasswordAuditPage(self.app),
             "system_hw": lambda: ParrotOverviewPage(self.app, self.sidebar.select_page),

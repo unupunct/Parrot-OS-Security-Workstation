@@ -180,6 +180,31 @@ class ProjectService:
         return [dict(r) for r in self._db.query("SELECT * FROM evidence WHERE project_id=? ORDER BY id DESC",
                                                 (project_id,))]
 
+    def evidence_all(self, project_id: int | None = None) -> list[dict]:
+        """Evidence rows with their project name and linked finding title (all projects when project_id is None)."""
+        sql = ("SELECT e.*, p.name AS project, f.title AS finding FROM evidence e JOIN projects p ON p.id = e.project_id "
+               "LEFT JOIN findings f ON f.id = e.finding_id")
+        params: tuple = ()
+        if project_id is not None:
+            sql, params = sql + " WHERE e.project_id = ?", (project_id,)
+        return [dict(r) for r in self._db.query(sql + " ORDER BY e.id DESC", params)]
+
+    def link_evidence(self, evidence_id: int, finding_id: int | None) -> None:
+        """Attach evidence to a finding of the SAME project (or detach it with None)."""
+        ev = self._db.query_one("SELECT project_id FROM evidence WHERE id = ?", (evidence_id,))
+        if ev is None:
+            raise ValidationError("that evidence entry does not exist")
+        if finding_id is not None:
+            f = self._db.query_one("SELECT project_id FROM findings WHERE id = ?", (finding_id,))
+            if f is None or f["project_id"] != ev["project_id"]:
+                raise ValidationError("the finding must belong to the same project")
+        self._db.execute("UPDATE evidence SET finding_id = ? WHERE id = ?", (finding_id, evidence_id))
+        self.touch(ev["project_id"])
+
+    def remove_evidence(self, evidence_id: int) -> None:
+        """Forget the reference. The file on disk is never touched."""
+        self._db.execute("DELETE FROM evidence WHERE id = ?", (evidence_id,))
+
     def verify_evidence(self, evidence_id: int) -> str:
         """-> 'ok' | 'changed' | 'missing'"""
         r = self._db.query_one("SELECT path, sha256 FROM evidence WHERE id=?", (evidence_id,))

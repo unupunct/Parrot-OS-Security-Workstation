@@ -59,6 +59,8 @@ class AppController:
         self.notifications = NotificationService(self.db)
         self.bluetooth = BluetoothService(self.db)
         self.projects = ProjectService(self.db)
+        from ..services.project_reports import ProjectReportService
+        self.projreports = ProjectReportService(self.db, self.projects)
         self.nmap = NmapService(self.db, self.projects, self.paths.data_dir / "scans")
         self.report_import = ReportImportService(self.db, self.projects)
         self.bloodhound = BloodHoundService()

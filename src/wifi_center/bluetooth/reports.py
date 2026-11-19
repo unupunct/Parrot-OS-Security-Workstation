@@ -164,15 +164,8 @@ class BluetoothReportGenerator:
 
     @staticmethod
     def _write_pdf(html_text: str, path: Path) -> None:
+        from ..services.pdf_export import html_to_pdf
         try:
-            from PySide6.QtCore import QMarginsF
-            from PySide6.QtGui import QPageLayout, QPageSize, QPdfWriter, QTextDocument
-        except ImportError as e:                            # the report engine is part of Qt; without it only HTML/JSON/CSV
-            raise BluetoothError("PDF output needs PySide6's PDF support; use HTML and print it to PDF instead.") from e
-        writer = QPdfWriter(str(path))
-        writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-        writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Unit.Millimeter)
-        writer.setTitle("Bluetooth Security Report")
-        doc = QTextDocument()
-        doc.setHtml(html_text)
-        doc.print_(writer)
+            html_to_pdf(html_text, path, "Bluetooth Security Report")
+        except RuntimeError as e:
+            raise BluetoothError(str(e)) from e
