@@ -13,14 +13,17 @@ from .netsec_common import confirm_dialog
 
 esc = html.escape
 OP_FOR_KIND = {"upgrade": "apt_upgrade", "dist-upgrade": "apt_dist_upgrade", "install": "apt_install",
-               "remove": "apt_remove", "autoremove": "apt_autoremove"}
+               "remove": "apt_remove", "autoremove": "apt_autoremove", "reinstall": "apt_reinstall", "download": "apt_download",
+               "fix-broken": "apt_fix_broken"}
 TITLES = {"upgrade": "Upgrade installed packages", "dist-upgrade": "Full system upgrade", "install": "Install packages",
-          "remove": "Remove packages", "autoremove": "Remove unused dependencies", "update": "Update package lists"}
+          "remove": "Remove packages", "autoremove": "Remove unused dependencies", "update": "Update package lists",
+          "reinstall": "Reinstall packages", "download": "Download packages only", "fix-broken": "Fix broken dependencies"}
 
 
 def equivalent_command(kind: str, packages: list[str] | None = None) -> str:
     verbs = {"upgrade": "apt-get upgrade", "dist-upgrade": "apt-get dist-upgrade", "install": "apt-get install",
-             "remove": "apt-get remove", "autoremove": "apt-get autoremove", "update": "apt-get update"}
+             "remove": "apt-get remove", "autoremove": "apt-get autoremove", "update": "apt-get update",
+             "reinstall": "apt-get install --reinstall", "download": "apt-get install --download-only", "fix-broken": "apt-get install -f"}
     return "sudo " + verbs[kind] + (" " + " ".join(packages) if packages else "")
 
 

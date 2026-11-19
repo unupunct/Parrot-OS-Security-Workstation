@@ -43,9 +43,9 @@ class Action:
 
 ACTIONS: tuple[Action, ...] = (
     Action("org.wificenter.helper.maintenance", "Package maintenance",
-           "Refresh package lists, upgrade, install and remove packages, and clean the APT cache.",
+           "Refresh package lists; upgrade, install, reinstall, download and remove packages; repair broken dependencies; finish interrupted installations; clean the APT cache.",
            ("apt_update", "apt_upgrade", "apt_dist_upgrade", "apt_install", "apt_remove", "apt_autoremove",
-            "apt_clean", "purge_residual_configs")),
+            "apt_clean", "purge_residual_configs", "apt_reinstall", "apt_download", "apt_fix_broken", "dpkg_configure")),
     Action("org.wificenter.helper.cleanup-files", "Remove old system files",
            "Delete old files in /var/tmp and rotated logs in /var/log, individually validated.",
            ("remove_system_files",)),
@@ -57,7 +57,7 @@ ACTIONS: tuple[Action, ...] = (
 )
 KINDS: tuple[str, ...] = tuple(k for a in ACTIONS for k in a.kinds)
 APT_TRANSACTION_KINDS = ("apt_upgrade", "apt_dist_upgrade", "apt_install", "apt_remove", "apt_autoremove",
-                         "purge_residual_configs")
+                         "purge_residual_configs", "apt_reinstall", "apt_download", "apt_fix_broken")
 REMOVAL_CATEGORIES = ("var_tmp", "logs_system")
 
 
@@ -104,7 +104,7 @@ class PrivilegedOp:
             raise ProtocolError("too many packages")
         for p in self.packages:
             validate_package_name(p)
-        if self.kind in ("apt_install", "apt_remove", "purge_residual_configs") and not self.packages:
+        if self.kind in ("apt_install", "apt_remove", "purge_residual_configs", "apt_reinstall", "apt_download") and not self.packages:
             raise ProtocolError(f"{self.kind} needs at least one package")
         if self.kind == "remove_system_files":
             if self.category not in REMOVAL_CATEGORIES:

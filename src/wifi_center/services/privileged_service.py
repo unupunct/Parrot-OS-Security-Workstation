@@ -70,7 +70,8 @@ def build_op(kind: str, packages: list[str] | None = None, tx=None) -> Privilege
     """Operation for an APT transaction kind, carrying the manifest of what the user approved."""
     mapping = {"update": "apt_update", "upgrade": "apt_upgrade", "dist-upgrade": "apt_dist_upgrade",
                "install": "apt_install", "remove": "apt_remove", "autoremove": "apt_autoremove",
-               "purge": "purge_residual_configs", "clean": "apt_clean"}
+               "purge": "purge_residual_configs", "clean": "apt_clean", "reinstall": "apt_reinstall", "download": "apt_download",
+               "fix-broken": "apt_fix_broken", "configure": "dpkg_configure"}
     manifest = None
     if tx is not None:
         manifest = Manifest(tuple(c.name for c in tx.installs), tuple(c.name for c in tx.upgrades),

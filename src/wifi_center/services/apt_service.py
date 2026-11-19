@@ -283,10 +283,12 @@ class AptService:
         """Simulate a transaction (no root, no changes) and return exactly what APT proposes."""
         names = [validate_package_name(p) for p in (packages or [])]
         verbs = {"upgrade": ["upgrade"], "dist-upgrade": ["dist-upgrade"], "install": ["install", "--"],
-                 "remove": ["remove", "--"], "autoremove": ["autoremove"], "purge": ["purge", "--"]}
+                 "remove": ["remove", "--"], "autoremove": ["autoremove"], "purge": ["purge", "--"],
+                 "reinstall": ["install", "--reinstall", "--"], "download": ["install", "--download-only", "--"],
+                 "fix-broken": ["install", "-f"]}
         if kind not in verbs:
             raise ValueError(f"unknown transaction kind: {kind}")
-        if kind in ("install", "remove", "purge") and not names:
+        if kind in ("install", "remove", "purge", "reinstall", "download") and not names:
             raise ValueError("choose at least one package")
         if not self.available():
             return Transaction(kind, ok=False, error="apt-get is not available on this system")

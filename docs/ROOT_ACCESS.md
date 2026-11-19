@@ -9,7 +9,7 @@ The helper accepts a fixed list of operations, each re-validated as root; it is 
 
 | Polkit action | Operations |
 |---|---|
-| `org.wificenter.helper.maintenance` | `apt-get update/upgrade/dist-upgrade/install/remove/autoremove/clean`, purge of leftover package configs |
+| `org.wificenter.helper.maintenance` | `apt-get update/upgrade/dist-upgrade/install/reinstall/download-only/remove/autoremove/clean`, `apt-get install -f` (fix broken dependencies), `dpkg --configure -a` (finish an interrupted installation), purge of leftover package configs |
 | `org.wificenter.helper.cleanup-files` | delete old files in `/var/tmp` and rotated logs in `/var/log` (allow-listed roots, ages and name patterns) |
 | `org.wificenter.helper.network-interface` | put a wireless interface in monitor mode and restore it afterwards (saved state, rollback) |
 | `org.wificenter.helper.diagnostics` | read the system journal and a service's status (read-only) |

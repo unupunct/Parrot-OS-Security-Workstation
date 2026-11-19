@@ -52,3 +52,23 @@ The APT, dpkg, `apt-cache`, `systemctl` and `flatpak`/`snap`/`pipx` parsers were
 output and tested with sample output, not against a live Parrot OS machine. Please run the System Updates page on Parrot
 OS before relying on it, and report any output that does not parse. Compatibility target is Python 3.11 (Parrot OS 6); a test
 guards against 3.12-only syntax, but the suite itself has only been run on Python 3.13 so far.
+
+## Package Manager (redesigned)
+
+* **Views**: Installed, Available (search), Upgradable (with a count) and Config left (removed packages whose configuration remains).
+  Each row has a status badge; the right-hand panel is context-sensitive: Install / Update, Reinstall, Remove, Download only,
+  Preview, View files, View changelog and Properties are enabled only when they make sense for the selected package.
+* **Details panel**: Details, Dependencies (forward, reverse and a two-level tree), Files, Changelog (the one shipped with the
+  package, offline; the repository copy is fetched only on request) and Verify (`dpkg --verify` of the installed files).
+* **Safety**: every change is simulated with `apt-get -s`, shows every package that will be installed, upgraded or removed, needs
+  an explicit approval, runs through the privileged helper with an approved manifest that the helper re-checks as root, and is
+  recorded. `remove` keeps configuration files. Nothing runs autoremove, purge or cache cleaning on its own. A running package
+  manager is never overridden, and a half-finished installation (`dpkg --audit`) is reported with an offer to finish it.
+* **More menu**: Broken packages (dpkg audit plus APT's simulated repair; "Finish interrupted installation" and "Fix
+  dependencies"), Orphaned packages (confirmed removal), Cache manager (size, largest files, confirmed clean) and Repositories
+  (read-only: your APT sources are never edited).
+* **Transaction history and activity**: every package operation, with success / failure, time and details, is kept until you press
+  **Clear history…** and confirm; the activity graph counts the operations that really ran per day.
+* New privileged operations (maintenance permission): `apt_reinstall`, `apt_download`, `apt_fix_broken` and `dpkg_configure`.
+  After updating WIFI Center, re-run `sudo ./privileged-helper/install.sh` so the installed helper knows them.
+

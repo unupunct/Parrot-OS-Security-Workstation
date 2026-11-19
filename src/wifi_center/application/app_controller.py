@@ -76,6 +76,8 @@ class AppController:
         self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)
         from ..services.hardware_info import HardwareInfoService
         self.hwinfo = HardwareInfoService()
+        from ..services.package_tools import PackageTools
+        self.pkgtools = PackageTools(self.apt)
         from ..services.docs_service import DocsService
         self.docs = DocsService()
         from ..services.lan_scanner import LanScanner

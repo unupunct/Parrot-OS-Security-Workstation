@@ -323,3 +323,21 @@ def test_tool_manager_config_roundtrip_and_validation(controller, tmp_path):
         tm.set_config("not-a-tool")
     controller.db.execute("UPDATE tools SET config_json='{garbage' WHERE id='wifi-audit-tool'")
     assert tm.get_config("wifi-audit-tool") == {}
+
+
+def test_manual_installs_in_conventional_folders_are_found_and_launched_from_their_folder(tmp_path):
+    from pathlib import Path
+    home = str(Path.home())
+    entry = str(Path(home) / "sparrow-wifi" / "sparrow-wifi.py")
+    probe = FakeProbe({}, existing=(entry,))
+    integ = build_integration("sparrow-wifi", probe)
+    d = integ.detect_installation()
+    assert d.installed and d.via == "found" and d.path == entry
+    req = integ.launch_supported_operation("launch")
+    assert req.argv[0] == entry and req.cwd == str(Path(home) / "sparrow-wifi")                      # scripts run from their own folder
+    # nothing is found in an unrelated place, and tools without an entry file are never searched
+    assert not build_integration("sparrow-wifi", FakeProbe({}, existing=(str(Path(home) / "elsewhere" / "sparrow-wifi.py"),))).detect_installation().installed
+    assert not build_integration("nmap", FakeProbe({}, existing=(str(Path(home) / "nmap" / "nmap"),))).detect_installation().installed
+    # an explicit configuration still wins over guessing
+    cfg = build_integration("sparrow-wifi", FakeProbe({}, existing=(entry,)))
+    assert cfg.manual_install_dirs()[0] == Path(home) / "sparrow-wifi"

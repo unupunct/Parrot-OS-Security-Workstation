@@ -198,10 +198,10 @@ PROFILES: tuple[ToolProfile, ...] = (
     ToolProfile(
         id="pskracker", name="PSKracker", category=CATEGORIES[5],
         description="WPA/WPA2 default pre-shared key generator.",
-        executables=("pskracker",), entry_files=("pskracker",),
+        executables=("pskracker",), entry_files=("pskracker",), apt_packages=("pskracker",),
         docs_url="https://github.com/soxrok2212/PSKracker#readme",
         source_url="https://github.com/soxrok2212/PSKracker",
-        install_hint="Not packaged in APT. Review the source, build it yourself, then set its folder in Tool Configuration.",
+        install_hint="sudo apt install pskracker",
         capabilities=("Installation detection", "Documentation"),
         license="See repository", restricted=True, restriction_note=_RESTRICTED_NOTE),
     # ---- Identity and infrastructure ----

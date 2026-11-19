@@ -31,7 +31,7 @@ EXE_CANDIDATES = {
     "apt-get": ("/usr/bin/apt-get",), "journalctl": ("/usr/bin/journalctl", "/bin/journalctl"),
     "systemctl": ("/usr/bin/systemctl", "/bin/systemctl"), "ip": ("/usr/sbin/ip", "/sbin/ip", "/usr/bin/ip", "/bin/ip"),
     "iw": ("/usr/sbin/iw", "/sbin/iw", "/usr/bin/iw"), "nmcli": ("/usr/bin/nmcli",),
-    "dpkg-query": ("/usr/bin/dpkg-query",),
+    "dpkg-query": ("/usr/bin/dpkg-query",), "dpkg": ("/usr/bin/dpkg",),
 }
 TIMEOUTS = {"apt": 7200.0, "diag": 60.0, "files": 600.0, "iface": 60.0}
 STATE_DIR = "/run/wifi-center"
@@ -142,7 +142,10 @@ def apt_simulation_args(op: PrivilegedOp) -> tuple[str, list[str]] | None:
     """(verb, args) of the matching `apt-get -s` simulation for transaction-type operations."""
     return {"apt_upgrade": ("upgrade", []), "apt_dist_upgrade": ("dist-upgrade", []),
             "apt_install": ("install", ["--", *op.packages]), "apt_remove": ("remove", ["--", *op.packages]),
-            "apt_autoremove": ("autoremove", []), "purge_residual_configs": ("purge", ["--", *op.packages])}.get(op.kind)
+            "apt_autoremove": ("autoremove", []), "purge_residual_configs": ("purge", ["--", *op.packages]),
+            "apt_reinstall": ("install", ["--reinstall", "--", *op.packages]),
+            "apt_download": ("install", ["--download-only", "--", *op.packages]),
+            "apt_fix_broken": ("install", ["-f"])}.get(op.kind)
 
 
 def plan_commands(op: PrivilegedOp, exists: Callable[[str], bool] = os.path.exists) -> list[Command]:
@@ -156,6 +159,9 @@ def plan_commands(op: PrivilegedOp, exists: Callable[[str], bool] = os.path.exis
     if sim:
         verb, args = sim
         return [Command((apt, *APT_FLAGS, verb, *args), TIMEOUTS["apt"])]
+    if op.kind == "dpkg_configure":      # finish an interrupted installation: configure packages that were unpacked but not set up
+        dp = find_exe("dpkg", exists) or "/usr/bin/dpkg"
+        return [Command((dp, "--configure", "-a", "--force-confold"), TIMEOUTS["apt"])]
     if op.kind == "diag_journal":
         jc = find_exe("journalctl", exists)
         if not jc:
@@ -403,7 +409,7 @@ class HelperCore:
             return self.interfaces.monitor(op.iface, emit, cancel)
         if op.kind == "iface_restore":
             return self.interfaces.restore(op.iface, emit, cancel)
-        if op.kind.startswith("apt_") or op.kind == "purge_residual_configs":
+        if op.kind.startswith("apt_") or op.kind in ("purge_residual_configs", "dpkg_configure"):
             holders = apt_busy(self.proc_root)
             if holders:
                 return ExecResult(False, "refused", "A package manager is running (" + ", ".join(holders) + "). "

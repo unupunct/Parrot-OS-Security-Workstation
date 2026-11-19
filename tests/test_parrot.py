@@ -556,3 +556,21 @@ def test_autoremove_and_residual_scans_use_simulation_and_dpkg(controller, tmp_p
     assert [i.path for i in s["residual_configs"].items] == ["old-tool", "other-tool"]
     assert parse_dpkg_residual("rc  a\nii  b\nrc c") == ["a", "c"]
     assert svc._apt._run_cmd is not None and any(c[:2] == ["apt-get", "-s"] for c in svc._apt._run_cmd.calls)
+
+
+def test_maintenance_activity_counts_only_operations_that_ran_and_clear_is_explicit():
+    from wifi_center.database.repository import Database
+    from wifi_center.services.maintenance_service import MaintenanceService
+    m = MaintenanceService(Database(":memory:"))
+    m.record("Install x", "install", "success", packages=["x"])
+    m.record("Upgrade", "upgrade", "success")
+    m.record("Remove y", "remove", "failed", errors="boom")
+    m.record("Install z", "install", "cancelled")           # nothing ran
+    m.record("Install q", "install", "not executed")        # nothing ran
+    m.record("Cleanup", "cleanup", "success")               # not a package operation
+    act = m.activity()
+    assert len(act) == 1 and (act[0]["installs"], act[0]["upgrades"], act[0]["removals"], act[0]["failed"]) == (1, 1, 0, 1)
+    assert len(m.entries()) == 6                             # reading activity deletes nothing
+    assert m.clear(("install", "remove", "upgrade")) == 5 and [e["op_type"] for e in m.entries()] == ["cleanup"]
+    assert m.activity() == []
+    assert m.clear() == 1 and m.entries() == []

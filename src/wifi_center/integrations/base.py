@@ -90,7 +90,7 @@ class ToolProfile:
 class Detection:
     installed: bool
     path: str | None = None
-    via: str = ""          # path | package | config | docker
+    via: str = ""          # path | package | config | found (a manual install in a conventional folder) | docker
 
 
 @dataclass(frozen=True)
@@ -200,7 +200,30 @@ class ToolIntegration:
         for pkg in self.profile.apt_packages:
             if self.probe.dpkg_version(pkg):
                 return Detection(True, None, "package")
+        found = self._find_manual_install()
+        if found:
+            return Detection(True, found, "found")
         return Detection(False)
+
+    def manual_install_dirs(self) -> list[Path]:
+        """Conventional folders where a tool cloned by hand usually lives (only checked for tools with a known entry file)."""
+        p = self.profile
+        names = list(dict.fromkeys((p.id, p.id.replace("-", "_"), p.name.lower().replace(" ", "-"), p.name.lower().replace(" ", ""))))
+        home = Path.home()
+        bases = (home, home / "tools", home / "Tools", home / "git", home / "src", home / "Downloads", Path("/opt"), Path("/usr/local/share"),
+                 Path("/usr/share"))
+        return [b / n for b in bases for n in names]
+
+    def _find_manual_install(self) -> str | None:
+        """An entry file such as sparrow-wifi.py inside a conventional folder. Only file existence is checked; nothing is executed."""
+        if not self.profile.entry_files:
+            return None
+        for d in self.manual_install_dirs():
+            for entry in self.profile.entry_files:
+                cand = str(d / entry)
+                if self.probe.path_exists(cand):
+                    return cand
+        return None
 
     def get_version(self) -> str | None:
         det = self.detect_installation()
@@ -217,7 +240,7 @@ class ToolIntegration:
             v = self.probe.dpkg_version(pkg)
             if v:
                 return v
-        git_dir = self.config.get("install_path")
+        git_dir = self.config.get("install_path") or (str(Path(det.path).parent) if det.via == "found" and det.path else None)
         if git_dir and self.probe.path_exists(str(Path(git_dir) / ".git")):
             r = self.probe.run(["git", "-C", str(git_dir), "describe", "--tags", "--always"], timeout=10)
             if r.ok and r.stdout.strip():
@@ -298,7 +321,8 @@ class ToolIntegration:
         det = self.detect_installation()
         if not det.installed or not det.path:
             raise ValueError(f"{self.profile.name} is not installed (no executable found)")
-        return LaunchRequest(self.profile.id, op.id, (det.path, *op.args), op.method, op.timeout)
+        cwd = str(Path(det.path).parent) if det.path and det.path.endswith(".py") else None     # scripts expect to run from their own folder
+        return LaunchRequest(self.profile.id, op.id, (det.path, *op.args), op.method, op.timeout, cwd)
 
     def parse_results(self, result: str) -> ParsedResult:
         lines = [l for l in result.splitlines() if l.strip()]

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QFileDialog
 from tests.test_parrot import (DIST, DPKG, POLICY, SHOW, UPGRADE, UNITS, FakeRunner, make_cleanup, put)
 from wifi_center.services.privileged_service import ExecutionResult
 from wifi_center.ui.pages import cleanup_pages as cp
+from wifi_center.ui.pages import package_manager_page as pmp
 from wifi_center.ui.pages import parrot_common as pc
 from wifi_center.ui.pages import parrot_pages as pp
 
@@ -52,6 +53,7 @@ def confirm_spy(monkeypatch, answer=True):
     monkeypatch.setattr(pc, "confirm_dialog", lambda parent, title, text, ok="Confirm", require_checkbox=None, danger=False:
                         (calls.append({"title": title, "text": text, "ok": ok, "checkbox": require_checkbox, "danger": danger}), answer)[1])
     monkeypatch.setattr(pp, "confirm_dialog", pc.confirm_dialog)
+    monkeypatch.setattr(pmp, "confirm_dialog", pc.confirm_dialog)
     return calls
 
 
@@ -176,16 +178,41 @@ def test_update_lists_needs_backend_and_confirmation(env, qapp, monkeypatch):
 
 
 # ---------------- package manager ----------------
-def test_package_manager_search_details_and_install_flow(env, qapp, monkeypatch):
+def package_tools(c, extra=None):
+    nl = chr(10)
+    table = {("dpkg-query",): "rc |old-tool|1.0|12|Gone but configured" + nl, ("dpkg", "--audit"): " half-pkg  not configured" + nl,
+             ("dpkg", "-L"): "/." + nl + "/usr/bin/nmap" + nl + "/usr/share/man/man1/nmap.1.gz" + nl,
+             ("apt-cache", "depends"): "nmap" + nl + "  Depends: libc6" + nl + "  Depends: nmap-common" + nl + "  Suggests: ncat" + nl,
+             ("apt-cache", "rdepends"): "nmap" + nl + "Reverse Depends:" + nl + "  parrot-tools" + nl,
+             ("dpkg", "--verify"): "??5??????  c /etc/nmap.conf" + nl}
+    table.update(extra or {})
+    c.pkgtools._run = FakeRunner(table)
+    c.pkgtools._which = lambda n: "/usr/bin/" + n
+    return c.pkgtools
+
+
+def test_package_manager_views_search_details_and_install_flow(env, qapp, monkeypatch):
     c, runner = env
+    package_tools(c)
     c.privileged = rec = Recording()
     calls = confirm_spy(monkeypatch, True)
     page = pp.PackageManagerPage(c)
-    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 2)    # installed list
-    page.table.selectRow(0)
-    assert wait_until(qapp, lambda: "Network Mapper" in page.detail.toPlainText())
-    assert "upgradable" in page.detail.toPlainText() and "libc6" in page.detail.toPlainText()
-    page.scope.setCurrentIndex(1)
+    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 2)      # installed list
+    assert page.chips["installed"].isChecked() and page.table.item(0, 1).text() in ("nmap", "libc6")
+    assert wait_until(qapp, lambda: page.chips["upgradable"].text() == "Upgradable (2)")          # count from the real simulation
+    assert page.banner.isVisibleTo(page) and "half-pkg" in page.banner.text()                  # an interrupted install is surfaced
+    for r in range(page.table.rowCount()):
+        if page.table.item(r, 1).text() == "nmap":
+            page.table.selectRow(r)
+    assert wait_until(qapp, lambda: "Network Mapper" in page.detail.toPlainText() or "Network Mapper" in page.d_sum.text())
+    assert page.d_name.text() == "nmap"
+    assert page.b_remove.isEnabled() and page.b_reinstall.isEnabled()
+    page.tabs.setCurrentIndex(2)
+    assert wait_until(qapp, lambda: "/usr/bin/nmap" in page.files.toPlainText() and "2 file(s)" in page.files.toPlainText())
+    page.tabs.setCurrentIndex(1)
+    assert wait_until(qapp, lambda: "libc6" in page.deps.toPlainText() and "parrot-tools" in page.deps.toPlainText())
+    # available view needs a valid query
+    page.set_view("available")
     page.query.setText("nmap; rm -rf /")
     page.search()
     assert "letters, digits" in page.msg.text()
@@ -193,12 +220,88 @@ def test_package_manager_search_details_and_install_flow(env, qapp, monkeypatch)
     page.search()
     assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 1)
     page.table.selectRow(0)
-    runner.table[("apt-get",)] = "Inst nmap (7.94-3 Parrot:6.1/lory [amd64])\n1 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.\n"
+    assert not page.b_install.isEnabled() and page.b_remove.isEnabled()      # nmap is already installed: reinstall or remove, not install
+    nl = chr(10)
+    runner.table[("apt-get",)] = ("Inst nmap (7.94-3 Parrot:6.1/lory [amd64])" + nl
+                                  + "1 upgraded, 1 newly installed, 0 to remove and 0 not upgraded." + nl)
+    page._propose("install", apply=False)                                                        # preview never applies
+    assert wait_until(qapp, lambda: calls and "Preview" in calls[-1]["title"])
+    assert rec.ops == [] and "nothing was applied" in page.msg.text()
     page._propose("install")
     assert wait_until(qapp, lambda: rec.ops)
-    assert rec.ops[0].kind == "apt_install" and rec.ops[0].packages == ("nmap",)
-    assert "Install packages" == calls[0]["title"] and "sudo apt-get install nmap" in calls[0]["text"]
-    assert page.history.rowCount() >= 1
+    assert rec.ops[0].kind == "apt_install" and rec.ops[0].packages == ("nmap",) and rec.ops[0].manifest is not None
+    assert "Install packages" == calls[-1]["title"] and "sudo apt-get install nmap" in calls[-1]["text"]
+    assert page.history.rowCount() >= 1 and "success" in page.history.item(0, 3).text()
+
+
+def test_package_manager_removed_and_upgradable_views_and_reinstall(env, qapp, monkeypatch):
+    c, runner = env
+    package_tools(c)
+    c.privileged = rec = Recording()
+    confirm_spy(monkeypatch, True)
+    page = pp.PackageManagerPage(c)
+    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 2)
+    page.set_view("removed")
+    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 1)
+    assert page.table.item(0, 1).text() == "old-tool" and "Config left" in page.table.item(0, 3).text()
+    page.table.selectRow(0)
+    assert not page.b_remove.isEnabled() and not page.b_reinstall.isEnabled() and page.b_download.isEnabled()    # nothing installed to remove
+    page.set_view("upgradable")
+    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 2)
+    page.table.selectRow(0)
+    assert page.b_install.text() == "Update…" and page.b_install.isEnabled()
+    nl = chr(10)
+    runner.table[("apt-get",)] = ("Inst libc6 [2.36-9] (2.36-9+deb12u4 Debian:12.4/stable-updates [amd64])" + nl
+                                  + "1 upgraded, 0 newly installed, 0 to remove and 0 not upgraded." + nl)
+    name = page.table.item(0, 1).text()
+    page._propose("reinstall")
+    assert wait_until(qapp, lambda: rec.ops)
+    assert rec.ops[0].kind == "apt_reinstall" and rec.ops[0].packages == (name,)
+
+
+def test_package_manager_tools_never_act_on_their_own(env, qapp, monkeypatch):
+    c, runner = env
+    package_tools(c)
+    c.privileged = rec = Recording()
+    calls = confirm_spy(monkeypatch, False)                                 # the user declines everything
+    page = pp.PackageManagerPage(c)
+    assert wait_until(qapp, lambda: not page.loader.active and page.table.rowCount() == 2)
+    page.open_tool("broken")
+    assert wait_until(qapp, lambda: "half-pkg" in page.tool_view.toPlainText())
+    assert page.tool_btn.isEnabled() and page.tool_btn.text().startswith("Finish interrupted")
+    page._configure_pending()
+    assert calls[-1]["title"] == "Finish interrupted installation" and rec.ops == []                   # declined: nothing ran
+    assert c.maintenance.entries()[0]["result"] == "cancelled"
+    page.open_tool("cache")
+    assert wait_until(qapp, lambda: "downloaded package file" in page.tool_view.toPlainText())
+    page._clean_cache()
+    assert rec.ops == [] and calls[-1]["title"] == "Clean package cache"                               # never cleaned without a yes
+    confirm_spy(monkeypatch, True)
+    page._clean_cache()
+    assert [o.kind for o in rec.ops] == ["apt_clean"]
+
+
+def test_package_manager_history_is_permanent_until_explicitly_cleared(env, qapp, monkeypatch):
+    c, runner = env
+    package_tools(c)
+    c.maintenance.record("Install nmap", "install", "success", packages=["nmap"])
+    c.maintenance.record("Remove x", "remove", "failed", packages=["x"], errors="dpkg exploded")
+    c.maintenance.record("Cleanup", "cleanup", "success")
+    page = pp.PackageManagerPage(c)
+    assert wait_until(qapp, lambda: not page.loader.active and page.history.rowCount() == 2)
+    marks = [page.history.item(r, 3).text() for r in range(2)]
+    assert any("✔" in m for m in marks) and any("✖" in m for m in marks)
+    assert page.act_stack.currentWidget() is page.activity and "operations per day" in page.act_legend.text()      # real counts, not invented
+    page.refresh()
+    page.reload_history()
+    assert page.history.rowCount() == 2                                       # refreshing never prunes
+    calls = confirm_spy(monkeypatch, False)
+    page._clear_history()
+    assert page.history.rowCount() == 2 and calls[-1]["danger"] is True        # declined: untouched
+    confirm_spy(monkeypatch, True)
+    page._clear_history()
+    assert page.history.rowCount() == 0 and [e["op_type"] for e in c.maintenance.entries()] == ["cleanup"]   # only package records go
+    assert page.act_stack.currentWidget() is page.act_empty
 
 
 # ---------------- software updates ----------------
