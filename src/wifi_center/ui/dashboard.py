@@ -187,13 +187,15 @@ class Dashboard(QWidget):
 
     def refresh_db(self) -> None:
         db = self.app.db
-        tools = db.query_one(
-            "SELECT COUNT(*) total, COALESCE(SUM(installed),0) inst FROM tools")
-        if tools["total"] == 0:
-            self.tools_lbl.setText(_muted("No tool scan has been run yet. "
-                                          "The Tool Integration Manager arrives in Phase 2."))
+        ts = self.app.tools.summary()
+        if ts["scanned"] == 0:
+            self.tools_lbl.setText(_muted("Scanning for installed tools…"))
         else:
-            self.tools_lbl.setText(f"<b>{tools['inst']}</b> installed · {tools['total'] - tools['inst']} missing")
+            self.tools_lbl.setText(
+                f"<b>{ts['installed']}</b> installed · {ts['total'] - ts['installed']} not installed<br>"
+                f"Healthy: {ts['healthy']} · Warnings: {ts['warnings']} · "
+                f"Dependency problems: {ts['errors']}<br>"
+                + _muted("Update detection for tools arrives with the software update manager (Phase 7)."))
 
         running = db.query("SELECT name, tool_id, started_at FROM operations WHERE status='running' "
                            "ORDER BY id DESC LIMIT 5")

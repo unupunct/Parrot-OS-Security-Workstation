@@ -9,8 +9,13 @@ from .. import APP_NAME
 from ..application.app_controller import AppController
 from .dashboard import Dashboard
 from .navigation import find_item
+from ..workers.task import run_in_background
+from .pages.activity_page import ActivityPage
 from .pages.planned import PlannedPage
 from .pages.settings_page import SettingsPage
+from .pages.terminal_page import TerminalPage
+from .pages.tool_config_page import ToolConfigPage
+from .pages.tools_page import ToolsPage
 from .sidebar import Sidebar
 from .theme import build_stylesheet
 from .topbar import TopBar
@@ -66,6 +71,8 @@ class MainWindow(QMainWindow):
             if find_item(last):
                 start = last
         self.sidebar.select_page(start)
+        # Local-only detection scan at startup; results land in the DB and refresh the dashboard.
+        run_in_background(app.tools.scan_all, lambda _r: self._tools_scanned())
 
     # ---- navigation ----
     def show_page(self, page_id: str) -> None:
@@ -85,7 +92,26 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _page_key(page_id: str) -> str:
-        return "settings" if page_id in ("settings_general", "settings_appearance", "settings_backup") else page_id
+        if page_id in ("settings_general", "settings_appearance", "settings_backup"):
+            return "settings"
+        if page_id == "settings_integrations":
+            return "tools_config"
+        return page_id
+
+    def open_operation(self, op_id: int) -> None:
+        self.sidebar.select_page("terminal")
+        page = self._pages.get("terminal")
+        if isinstance(page, TerminalPage):
+            page.select_operation(op_id)
+
+    def _tools_scanned(self) -> None:
+        dash = self._pages.get("overview")
+        if isinstance(dash, Dashboard):
+            dash.refresh_db()
+        for key in ("tools_all", "tools_installed", "tools_missing"):
+            page = self._pages.get(key)
+            if isinstance(page, ToolsPage):
+                page.reload()
 
     def _create_page(self, page_id: str) -> QWidget:
         if page_id == "overview":
@@ -94,6 +120,15 @@ class MainWindow(QMainWindow):
             sp = SettingsPage(self.app)
             sp.accent_changed.connect(self.apply_accent)
             return sp
+        modes = {"tools_all": "all", "tools_installed": "installed", "tools_missing": "missing"}
+        if page_id in modes:
+            return ToolsPage(self.app, modes[page_id], self.open_operation, self._tools_scanned)
+        if page_id == "tools_config" or page_id == "settings_integrations":
+            return ToolConfigPage(self.app)
+        if page_id == "terminal":
+            return TerminalPage(self.app)
+        if page_id == "activity":
+            return ActivityPage(self.app, self.open_operation)
         return PlannedPage(find_item(page_id))  # type: ignore[arg-type]
 
     def _refresh_current(self) -> None:

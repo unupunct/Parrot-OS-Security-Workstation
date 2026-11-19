@@ -7,7 +7,10 @@ from pathlib import Path
 from ..database.repository import Database
 from ..services.adapter_service import AdapterService
 from ..services.backup_service import BackupService
+from ..security.audit_log import AuditLog
+from ..services.operation_manager import OperationManager
 from ..services.system_service import SystemService
+from ..services.tool_manager import ToolManager
 from .event_bus import EventBus
 from .logging_setup import setup_logging
 from .paths import AppPaths, resolve_paths
@@ -32,8 +35,14 @@ class AppController:
             BackupService,
             BackupService(self.db, self.paths.backup_dir),
         )
+        self.audit = AuditLog(self.paths.log_dir / "audit.log")
+        self.tools = ToolManager(self.db)
+        self.operations = OperationManager(self.db, self.audit)
+        self.audit.record("app.start")
         log.info("WIFI Center started (schema v%s)", self.db.schema_version())
 
     def shutdown(self) -> None:
         log.info("shutting down")
+        self.operations.shutdown()
+        self.audit.record("app.stop")
         self.db.close()

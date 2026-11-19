@@ -77,6 +77,12 @@ QLineEdit:focus, QComboBox:focus { border-color: %(green)s; }
 QTabWidget::pane { border: 1px solid %(border)s; border-radius: 6px; top: -1px; }
 QTabBar::tab { background: %(sidebar)s; padding: 6px 14px; border: 1px solid %(border)s; border-bottom: none; }
 QTabBar::tab:selected { color: %(green)s; background: %(card)s; }
+QHeaderView::section { background: %(sidebar)s; color: %(text2)s; border: none; border-bottom: 1px solid %(border)s;
+    padding: 6px; font-weight: 600; }
+QTableWidget { gridline-color: %(border)s; alternate-background-color: %(card)s; }
+QTableWidget::item { padding: 4px; border: none; }
+QTableWidget::item:selected { background: %(elevated)s; color: %(green)s; }
+QTableCornerButton::section { background: %(sidebar)s; border: none; }
 QProgressBar { background: %(sidebar)s; border: 1px solid %(border)s; border-radius: 4px; height: 8px; text-align: center; }
 QProgressBar::chunk { background: %(green)s; border-radius: 3px; }
 QSplitter::handle { background: %(border)s; width: 2px; }
