@@ -15,10 +15,10 @@
 set -euo pipefail
 
 REPO="unupunct/Parrot-OS-Security-Workstation"
-VERSION=""; FROM_DIR=""; DRY=0; UNINSTALL=0
+WANT_VERSION=""; FROM_DIR=""; DRY=0; UNINSTALL=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
+    --version) WANT_VERSION="${2:?--version needs a value}"; shift 2 ;;
     --from-dir) FROM_DIR="${2:?--from-dir needs a folder}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -32,8 +32,10 @@ die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 run() { if [ "$DRY" = 1 ]; then say "[dry-run] $*"; else "$@"; fi; }
 
 [ -r /etc/os-release ] || die "cannot identify the operating system"
-. /etc/os-release
-case " ${ID:-} ${ID_LIKE:-} " in *" debian "*|*" parrot "*|*" ubuntu "*) ;; *) die "this installer supports Debian-based systems (Parrot OS, Debian, Ubuntu); found: ${PRETTY_NAME:-unknown}" ;; esac
+# read the OS fields in a subshell: os-release defines VERSION, ID and others that must not leak into this script
+os_info="$( . /etc/os-release; printf '%s|%s|%s' "${ID:-}" "${ID_LIKE:-}" "${PRETTY_NAME:-unknown}" )"
+IFS='|' read -r os_id os_like os_name <<<"$os_info"
+case " $os_id $os_like " in *" debian "*|*" parrot "*|*" ubuntu "*) ;; *) die "this installer supports Debian-based systems (Parrot OS, Debian, Ubuntu); found: $os_name" ;; esac
 command -v apt-get >/dev/null || die "apt-get not found"
 if [ "$DRY" = 0 ] && [ "$(id -u)" -ne 0 ]; then die "run as root, for example: curl -fsSL <url> | sudo bash"; fi
 
@@ -50,11 +52,11 @@ if [ -n "$FROM_DIR" ]; then
 else
   command -v curl >/dev/null || die "curl is required (sudo apt install curl)"
   command -v python3 >/dev/null || die "python3 is required"
-  if [ -n "$VERSION" ]; then api="https://api.github.com/repos/$REPO/releases/tags/v${VERSION#v}"; else api="https://api.github.com/repos/$REPO/releases/latest"; fi
+  if [ -n "$WANT_VERSION" ]; then api="https://api.github.com/repos/$REPO/releases/tags/v${WANT_VERSION#v}"; else api="https://api.github.com/repos/$REPO/releases/latest"; fi
   say "Looking up the release: $api"
   if ! curl -fsSL -H 'Accept: application/vnd.github+json' "$api" -o "$TMP/release.json"; then
     # "latest" ignores pre-releases (release candidates): fall back to the newest release of any kind
-    [ -z "$VERSION" ] || die "release v${VERSION#v} not found"
+    [ -z "$WANT_VERSION" ] || die "release v${WANT_VERSION#v} not found"
     curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPO/releases?per_page=1" -o "$TMP/release.json" || die "could not read the releases (is one published? network?)"
   fi
   urls="$(python3 - "$TMP/release.json" <<'PY'

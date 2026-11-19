@@ -159,3 +159,10 @@ def test_scripts_have_valid_syntax_and_safe_defaults():
     one = (ROOT / "install.sh").read_text(encoding="utf-8")
     assert "sha256sum --quiet -c" in one and "--uninstall" in one and "--dry-run" in one
     assert "add-apt-repository" not in one and "sudoers" not in one.replace("change sudoers", "") and "curl -fsSL" in one
+
+
+def test_installer_does_not_let_os_release_overwrite_its_own_variables():
+    """Regression: sourcing /etc/os-release (VERSION="7.4 (echo)") clobbered the --version value."""
+    text = (ROOT / "install.sh").read_text(encoding="utf-8")
+    assert "WANT_VERSION" in text and not re.search(r"^\s*VERSION=", text, re.M)
+    assert not re.search(r"^\. /etc/os-release", text, re.M) and "$( . /etc/os-release;" in text
