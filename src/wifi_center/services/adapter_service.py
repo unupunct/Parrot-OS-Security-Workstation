@@ -6,7 +6,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .process_runner import run_command
+from .process_runner import run_command, find_executable
 
 
 @dataclass
@@ -98,7 +98,7 @@ class AdapterService:
         return adapters
 
     def _enrich_with_iw(self, adapters: list[WirelessAdapter]) -> None:
-        if not adapters or shutil.which("iw") is None:
+        if not adapters or find_executable("iw") is None:
             return
         r = run_command(["iw", "phy"], timeout=10)
         if r.ok:
@@ -124,7 +124,7 @@ class AdapterService:
         v = vendor.lower().removeprefix("0x").zfill(4)
         p = product.lower().removeprefix("0x").zfill(4)
         for tool, args in (("lsusb", ["lsusb", "-d", f"{v}:{p}"]), ("lspci", ["lspci", "-d", f"{v}:{p}"])):
-            if shutil.which(tool):
+            if find_executable(tool):
                 r = run_command(args, timeout=5)
                 if r.ok and r.stdout.strip():
                     line = r.stdout.strip().splitlines()[0]
@@ -147,7 +147,7 @@ class AdapterService:
         ]
         out = []
         for title, tool, argv in checks:
-            if shutil.which(tool) is None:
+            if find_executable(tool) is None:
                 out.append((title, f"{tool} is not installed"))
                 continue
             r = run_command(argv, timeout=10)

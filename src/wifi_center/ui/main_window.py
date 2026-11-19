@@ -33,7 +33,8 @@ from .pages.planned import PlannedPage
 from .pages.lan_scanner_page import LanScannerPage
 from .pages.sysinfo_page import SystemInfoPage as SpeccyInfoPage
 from .pages.root_access_page import PrivilegeMonitor, RootAccessPage
-from .pages.resource_pages import DocumentationPage, ResourceLibraryPage
+from .pages.docs_page import DocumentationPage
+from .pages.resource_pages import ResourceLibraryPage
 from .pages.settings_page import SettingsPage
 from .pages.spectrum_page import SpectrumPage
 from .pages.terminal_page import TerminalPage

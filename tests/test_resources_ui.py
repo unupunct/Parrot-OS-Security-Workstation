@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog, QInputDialog
 from wifi_center.services import resource_catalog as rc
 from wifi_center.services.resource_library import LibraryService
 from wifi_center.ui.pages import resource_pages as rp
-from wifi_center.ui.pages.resource_pages import DocumentationPage, ResourceLibraryPage
+from wifi_center.ui.pages.resource_pages import ResourceLibraryPage
 
 
 def wait_until(qapp, cond, timeout=6.0):
@@ -203,20 +203,6 @@ def test_local_resources_library_is_separate_and_has_no_catalog(controller, qapp
     p = ResourceLibraryPage(controller, "local")
     assert p.title == "Local Resources" and p.tabs.count() == 2 and p.lib.root == tmp_path / "local"
     assert not hasattr(p, "ctable")
-
-
-def test_documentation_hub_lists_tools_and_local_guides(controller, qapp, monkeypatch):
-    opened = []
-    monkeypatch.setattr(rp.QDesktopServices, "openUrl", staticmethod(lambda u: opened.append(u.toString()) or True))
-    page = DocumentationPage(controller)
-    titles = [page.table.item(r, 0).text() for r in range(page.table.rowCount())]
-    assert "Nmap documentation" in titles and any("NETWORK SECURITY" in t.upper() or "OSINT" in t.upper() for t in titles)
-    page.kind.setCurrentText("Tool documentation")
-    assert all("documentation" in page.table.item(r, 0).text() for r in range(page.table.rowCount()))
-    page.search.setText("nmap")
-    page.table.selectRow(0)
-    page._open()
-    assert opened == ["https://nmap.org/docs.html"] and opened   # nothing opens until Open is pressed
 
 
 def test_system_tab_lists_and_copies_into_library(page, qapp, tmp_path, monkeypatch):

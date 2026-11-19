@@ -113,3 +113,13 @@ def test_run_command_missing_and_timeout():
     assert run_command(["definitely-not-a-real-binary-xyz"]).error
     r = run_command([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.5)
     assert r.timed_out and not r.ok
+
+
+def test_find_executable_also_searches_sbin_directories(monkeypatch):
+    import shutil
+
+    from wifi_center.services import process_runner as pr
+    monkeypatch.setattr(shutil, "which", lambda n: n if n in ("/usr/sbin/iw", "/usr/bin/nmcli") else ("/usr/bin/ip" if n == "ip" else None))
+    assert pr.find_executable("iw") == "/usr/sbin/iw"             # not on a user's PATH, found in /usr/sbin
+    assert pr.find_executable("ip") == "/usr/bin/ip" and pr.find_executable("nothing") is None
+    assert pr.find_executable("/usr/bin/nmcli") == "/usr/bin/nmcli"

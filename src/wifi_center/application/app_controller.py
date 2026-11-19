@@ -76,6 +76,8 @@ class AppController:
         self.sysinfo = SystemInfoService(self.services.get(SystemService), self.apt)
         from ..services.hardware_info import HardwareInfoService
         self.hwinfo = HardwareInfoService()
+        from ..services.docs_service import DocsService
+        self.docs = DocsService()
         from ..services.lan_scanner import LanScanner
         self.lan = LanScanner(self.wireless.oui, known=lambda: self.settings.get("lan.devices"),
                               save_known=lambda d: self.settings.set("lan.devices", d))

@@ -16,7 +16,7 @@ from typing import Iterable
 
 from ..database.repository import Database
 from .oui import OuiLookup
-from .process_runner import run_command
+from .process_runner import run_command, find_executable
 
 
 class ScanError(RuntimeError):
@@ -164,7 +164,7 @@ class WirelessService:
 
     # ---- scanning ----
     def capabilities(self) -> dict[str, bool]:
-        return {"nmcli": shutil.which("nmcli") is not None, "iw": shutil.which("iw") is not None}
+        return {"nmcli": find_executable("nmcli") is not None, "iw": find_executable("iw") is not None}
 
     def scan(self, interface: str | None = None, rescan: bool = True) -> list[AccessPoint]:
         """Run one scan. Raises ScanError with a user-readable message when impossible."""

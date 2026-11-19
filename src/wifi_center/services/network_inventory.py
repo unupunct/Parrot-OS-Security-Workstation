@@ -16,7 +16,7 @@ import psutil
 
 from ..database.repository import Database
 from .oui import OuiLookup
-from .process_runner import run_command
+from .process_runner import run_command, find_executable
 
 
 @dataclass
@@ -106,22 +106,22 @@ class NetworkInventoryService:
         self.oui = oui or OuiLookup()
 
     def _route(self) -> tuple[str | None, str | None, str | None]:
-        if shutil.which("ip"):
+        if find_executable("ip"):
             r = run_command(["ip", "-j", "route", "show", "default"], timeout=5)
             if r.ok:
                 return parse_ip_route_json(r.stdout)
-        if platform.system() == "Windows" and shutil.which("route"):
+        if platform.system() == "Windows" and find_executable("route"):
             r = run_command(["route", "print", "-4", "0.0.0.0"], timeout=5)
             if r.ok:
                 return parse_route_print(r.stdout), None, None
         return None, None, None
 
     def _neighbors(self) -> list[dict]:
-        if shutil.which("ip"):
+        if find_executable("ip"):
             r = run_command(["ip", "-j", "neigh", "show"], timeout=5)
             if r.ok:
                 return parse_ip_neigh_json(r.stdout)
-        if shutil.which("arp"):
+        if find_executable("arp"):
             r = run_command(["arp", "-a"], timeout=5)
             if r.ok:
                 return parse_arp(r.stdout)

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..database.repository import Database
-from .process_runner import run_command
+from .process_runner import run_command, find_executable
 
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 DIAG_TOOLS = ("bluetoothctl", "hciconfig", "hcitool", "btmon", "rfkill", "btmgmt")
@@ -90,7 +90,7 @@ class BluetoothService:
         self._sysfs = sysfs
 
     def tools(self) -> dict[str, str | None]:
-        return {t: shutil.which(t) for t in DIAG_TOOLS}
+        return {t: find_executable(t) for t in DIAG_TOOLS}
 
     def adapters(self) -> list[str]:
         if not self._sysfs.is_dir():
@@ -98,20 +98,20 @@ class BluetoothService:
         return sorted(p.name for p in self._sysfs.iterdir() if re.match(r"^hci\d+$", p.name))
 
     def controller(self) -> BtController | None:
-        if not shutil.which("bluetoothctl"):
+        if not find_executable("bluetoothctl"):
             return None
         r = run_command(["bluetoothctl", "show"], timeout=10)
         return parse_show(r.stdout) if r.ok else None
 
     def rfkill(self) -> str:
-        if not shutil.which("rfkill"):
+        if not find_executable("rfkill"):
             return "rfkill not installed"
         r = run_command(["rfkill", "list", "bluetooth"], timeout=5)
         return (r.stdout or r.stderr or r.error or "").strip() or "no Bluetooth entries"
 
     def known_devices(self) -> list[BtDevice]:
         """Devices BlueZ already knows (paired or previously seen), with connection status."""
-        if not shutil.which("bluetoothctl"):
+        if not find_executable("bluetoothctl"):
             return []
         r = run_command(["bluetoothctl", "devices"], timeout=10)
         devs = parse_devices(r.stdout) if r.ok else []
@@ -124,7 +124,7 @@ class BluetoothService:
 
     def discover(self, seconds: int = 10) -> list[BtDevice]:
         """Passive-style standard discovery (inquiry scan) for a bounded time, started by the user."""
-        if not shutil.which("bluetoothctl"):
+        if not find_executable("bluetoothctl"):
             raise RuntimeError("bluetoothctl (BlueZ) is not installed")
         seconds = max(3, min(int(seconds), 60))
         r = run_command(["bluetoothctl", "--timeout", str(seconds), "scan", "on"], timeout=seconds + 10)

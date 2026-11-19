@@ -1,10 +1,27 @@
 """Safe subprocess wrapper: argument lists only, timeouts, explicit cwd, no shell."""
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
+
+
+SBIN_DIRS = ("/usr/local/sbin", "/usr/sbin", "/sbin")      # not on a normal user's PATH: iw, ethtool, rfkill, ... live here
+
+
+def find_executable(name: str) -> str | None:
+    """Like shutil.which, but also looks in the sbin directories that ordinary users do not have on PATH."""
+    found = shutil.which(name)
+    if found or os.sep in name:
+        return found
+    for d in SBIN_DIRS:
+        cand = shutil.which(f"{d}/{name}")
+        if cand:
+            return cand
+    return None
 
 
 @dataclass(frozen=True)
@@ -32,9 +49,10 @@ def run_command(
     if any("\x00" in a for a in args):
         raise ValueError("NUL byte in argument")
     argv = tuple(args)
+    exe = argv[0] if os.sep in argv[0] else (find_executable(argv[0]) or argv[0])    # run /usr/sbin tools by full path
     try:
         p = subprocess.run(
-            list(argv),
+            [exe, *argv[1:]],
             capture_output=True,
             text=True,
             errors="replace",
