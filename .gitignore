@@ -6,4 +6,3 @@ build/
 dist/
 .venv/
 *.db
-docs/screenshots/

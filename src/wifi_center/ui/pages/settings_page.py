@@ -1,4 +1,4 @@
-"""Settings workspace: General, Appearance, Logging, Backup & Recovery."""
+"""Settings workspace: General, Appearance, Backup & Recovery, About."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,6 +29,7 @@ class SettingsPage(QWidget):
         self.tabs.addTab(self._general(), "General")
         self.tabs.addTab(self._appearance(), "Appearance")
         self.tabs.addTab(self._backup(), "Backup && Recovery")
+        self.tabs.addTab(self._about(), "About")
         lay.addWidget(self.tabs)
 
     def show_tab_for(self, page_id: str) -> None:
@@ -119,6 +120,28 @@ class SettingsPage(QWidget):
         self.accent_changed.emit(value)
 
     # ---- Backup ----
+    def _about(self) -> QWidget:
+        from ... import APP_NAME, __version__
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        title = QLabel(f"{APP_NAME} {__version__}")
+        title.setObjectName("pageTitle")
+        lay.addWidget(title)
+        text = QLabel(
+            "Security workstation and system manager for Parrot OS: wireless and Bluetooth analysis, scoped network discovery, assessment projects "
+            "and reports, OSINT research, a tool manager and Parrot OS maintenance.<br><br>"
+            "<b>Use it only on networks and devices you own or are authorised to test.</b> Scope is enforced in the code, destructive actions ask "
+            "first, and privileged changes go through a small Polkit-guarded helper that validates every request and keeps an audit log.<br><br>"
+            "<b>Release candidate.</b> Much of the Bluetooth Lab (pairing, GATT, packet capture on real hardware) has been tested only against simulations "
+            "and synthetic data; pages say so where it applies.<br><br>"
+            "Licence: MIT &nbsp;·&nbsp; Source: https://github.com/unupunct/Parrot-OS-Security-Workstation &nbsp;·&nbsp; Documentation: Documentation page "
+            "or /usr/share/doc/wifi-center")
+        text.setWordWrap(True)
+        text.setOpenExternalLinks(True)
+        lay.addWidget(text)
+        lay.addStretch(1)
+        return w
+
     def _backup(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)

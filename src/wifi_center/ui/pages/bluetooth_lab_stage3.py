@@ -339,6 +339,7 @@ class ReportsView(QWidget):
         side.add(bw)
         split.addWidget(side)
         self.view = QTextBrowser()
+        self.view.setStyleSheet("background: #ffffff; color: #1b2227;")        # the report is styled for paper; show it on paper
         split.addWidget(self.view)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 3)

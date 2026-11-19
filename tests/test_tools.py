@@ -341,3 +341,11 @@ def test_manual_installs_in_conventional_folders_are_found_and_launched_from_the
     # an explicit configuration still wins over guessing
     cfg = build_integration("sparrow-wifi", FakeProbe({}, existing=(entry,)))
     assert cfg.manual_install_dirs()[0] == Path(home) / "sparrow-wifi"
+
+
+def test_manual_install_folders_match_the_tools_capitalised_name(tmp_path):
+    """Linux paths are case-sensitive: a clone made as ~/BlueMaho must be found."""
+    from pathlib import Path
+    entry = str(Path.home() / "BlueMaho" / "bluemaho.py")
+    d = build_integration("bluemaho", FakeProbe({}, existing=(entry,))).detect_installation()
+    assert d.installed and d.via == "found" and d.path == entry

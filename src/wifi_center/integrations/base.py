@@ -208,7 +208,8 @@ class ToolIntegration:
     def manual_install_dirs(self) -> list[Path]:
         """Conventional folders where a tool cloned by hand usually lives (only checked for tools with a known entry file)."""
         p = self.profile
-        names = list(dict.fromkeys((p.id, p.id.replace("-", "_"), p.name.lower().replace(" ", "-"), p.name.lower().replace(" ", ""))))
+        names = list(dict.fromkeys((p.id, p.id.replace("-", "_"), p.name.lower().replace(" ", "-"), p.name.lower().replace(" ", ""),
+                                    p.name, p.name.replace(" ", "-"), p.name.replace(" ", ""))))      # Linux paths are case-sensitive: ~/BlueMaho
         home = Path.home()
         bases = (home, home / "tools", home / "Tools", home / "git", home / "src", home / "Downloads", Path("/opt"), Path("/usr/local/share"),
                  Path("/usr/share"))

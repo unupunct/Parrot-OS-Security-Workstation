@@ -130,7 +130,8 @@ PROFILES: tuple[ToolProfile, ...] = (
         executables=("bluemaho",), entry_files=("BlueMaho.py", "bluemaho.py"),
         docs_url="https://github.com/zenware/BlueMaho#readme",
         source_url="https://github.com/zenware/BlueMaho",
-        install_hint="Not packaged in APT. Review the source, clone it, then set its folder in Tool Configuration.",
+        install_hint="Not packaged in APT. Cloned from the zenware fork (2016) into ~/BlueMaho. It is a Python 2 / wxPython program, so it does not run on a "
+                     "current Parrot (Python 3) without porting; WIFI Center detects the clone but does not launch it.",
         capabilities=("Installation detection", "Documentation"),
         license="See repository", restricted=True, restriction_note=_RESTRICTED_NOTE),
     # ---- Network discovery ----

@@ -12,7 +12,7 @@ page; the original `bluetoothctl` scanner is kept and is used automatically when
 | Packet Analyzer: capturing | `btmon` (package `bluez`) and the privileged helper | `sudo apt install bluez`, then rerun `sudo ./privileged-helper/install.sh` once (adds the `bluetooth-capture` action) |
 | Packet Analyzer: full dissection, PCAPNG | `tshark` (optional) | `sudo apt install tshark` |
 
-Your user should be in the `bluetooth` group (Parrot does this by default). No root is needed for any section built so far.
+Your user should be in the `bluetooth` group (Parrot does this by default). No root is needed except for capturing packets, which runs through the privileged helper after you authenticate.
 
 ## Sections
 
