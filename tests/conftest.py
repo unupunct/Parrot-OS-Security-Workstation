@@ -25,3 +25,11 @@ def controller(paths):
     c = AppController(paths=paths, console_log=False)
     yield c
     c.shutdown()
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """One QApplication for the whole run (Qt cannot reliably recreate it)."""
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    yield app

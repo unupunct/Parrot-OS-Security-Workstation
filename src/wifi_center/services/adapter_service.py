@@ -132,3 +132,24 @@ class AdapterService:
                     if m:
                         return m.group(1).strip()
         return None
+
+
+    def diagnostics(self, interface: str) -> list[tuple[str, str]]:
+        """Read-only driver/interface diagnostics. Each entry: (title, command output or reason)."""
+        if not re.match(r"^[A-Za-z0-9_.:-]{1,15}$", interface):
+            raise ValueError("invalid interface name")
+        checks = [
+            ("Interface info (iw dev)", "iw", ["iw", "dev", interface, "info"]),
+            ("Driver (ethtool -i)", "ethtool", ["ethtool", "-i", interface]),
+            ("Radio block state (rfkill)", "rfkill", ["rfkill", "list", "wifi"]),
+            ("Regulatory domain (iw reg get)", "iw", ["iw", "reg", "get"]),
+            ("NetworkManager device", "nmcli", ["nmcli", "-p", "device", "show", interface]),
+        ]
+        out = []
+        for title, tool, argv in checks:
+            if shutil.which(tool) is None:
+                out.append((title, f"{tool} is not installed"))
+                continue
+            r = run_command(argv, timeout=10)
+            out.append((title, (r.stdout or r.stderr or r.error or "no output").strip()))
+        return out

@@ -11,11 +11,16 @@ from .dashboard import Dashboard
 from .navigation import find_item
 from ..workers.task import run_in_background
 from .pages.activity_page import ActivityPage
+from .pages.bluetooth_page import BluetoothPage
+from .pages.kismet_page import KismetPage
+from .pages.packets_page import PacketsPage
 from .pages.planned import PlannedPage
 from .pages.settings_page import SettingsPage
+from .pages.spectrum_page import SpectrumPage
 from .pages.terminal_page import TerminalPage
 from .pages.tool_config_page import ToolConfigPage
 from .pages.tools_page import ToolsPage
+from .pages.wireless_pages import AdapterPage, DiscoveryPage
 from .sidebar import Sidebar
 from .theme import build_stylesheet
 from .topbar import TopBar
@@ -56,6 +61,7 @@ class MainWindow(QMainWindow):
         self._pages: dict[str, QWidget] = {}
         self._settings_page: SettingsPage | None = None
         self.current_page = ""
+        self._closed = False
 
         self.sidebar.page_selected.connect(self.show_page)
         self.topbar.navigate.connect(self.sidebar.select_page)
@@ -104,7 +110,19 @@ class MainWindow(QMainWindow):
         if isinstance(page, TerminalPage):
             page.select_operation(op_id)
 
+    def _wifi_scanned(self) -> None:
+        if self._closed:
+            return
+        dash = self._pages.get("overview")
+        if isinstance(dash, Dashboard):
+            dash.refresh_db()
+        spec = self._pages.get("spectrum")
+        if isinstance(spec, SpectrumPage):
+            spec.refresh()
+
     def _tools_scanned(self) -> None:
+        if self._closed:
+            return
         dash = self._pages.get("overview")
         if isinstance(dash, Dashboard):
             dash.refresh_db()
@@ -125,6 +143,12 @@ class MainWindow(QMainWindow):
             return ToolsPage(self.app, modes[page_id], self.open_operation, self._tools_scanned)
         if page_id == "tools_config" or page_id == "settings_integrations":
             return ToolConfigPage(self.app)
+        wireless = {"wifi_center": lambda: AdapterPage(self.app),
+                    "wireless_discovery": lambda: DiscoveryPage(self.app, self._wifi_scanned),
+                    "kismet": lambda: KismetPage(self.app), "spectrum": lambda: SpectrumPage(self.app),
+                    "bluetooth": lambda: BluetoothPage(self.app), "packets": lambda: PacketsPage(self.app)}
+        if page_id in wireless:
+            return wireless[page_id]()
         if page_id == "terminal":
             return TerminalPage(self.app)
         if page_id == "activity":
@@ -149,6 +173,7 @@ class MainWindow(QMainWindow):
             self.splitter.setSizes(sizes)
 
     def closeEvent(self, e) -> None:  # noqa: N802
+        self._closed = True
         s = self.app.settings
         s.set("ui.window_geometry", bytes(self.saveGeometry().toBase64()).decode())
         s.set("ui.splitter_sizes", [int(x) for x in self.splitter.sizes()])

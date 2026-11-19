@@ -139,12 +139,16 @@ class OperationManager(QObject):
         QTimer.singleShot(3000, lambda: proc.kill() if proc.state() != QProcess.ProcessState.NotRunning else None)
 
     def shutdown(self) -> None:
+        """Kill running processes and finalise their records synchronously (no signals left pending)."""
+        self._flush.stop()
         for op_id in list(self._procs):
             proc = self._procs[op_id]
+            proc.blockSignals(True)  # no half-processed finished/readyRead callbacks after this point
             if proc.state() != QProcess.ProcessState.NotRunning:
-                self._pending_flags[op_id] = "cancelled"
                 proc.kill()
-                proc.waitForFinished(1000)
+                proc.waitForFinished(2000)
+            self._finish(op_id, "cancelled", None)
+            proc.deleteLater()
         self._flush_logs()
 
     # ---- internals ----

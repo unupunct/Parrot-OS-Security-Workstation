@@ -12,11 +12,6 @@ from wifi_center.ui.pages.settings_page import SettingsPage
 from wifi_center.ui.theme import build_stylesheet
 
 
-@pytest.fixture(scope="module")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
 def test_navigation_ids_unique_and_complete():
     ids = [i.id for i in all_items()]
     assert len(ids) == len(set(ids))
@@ -102,9 +97,14 @@ def test_tools_pages_filter_and_run_version(qapp, controller):
     inst.table.selectRow(0)
     btn = next(inst.btn_row.itemAt(i).widget() for i in range(inst.btn_row.count())
                if inst.btn_row.itemAt(i).widget() and inst.btn_row.itemAt(i).widget().text() == "Show version")
+    from PySide6.QtCore import QEventLoop, QTimer
+    loop = QEventLoop()
+    controller.operations.finished.connect(lambda *_: loop.quit())
+    QTimer.singleShot(8000, loop.quit)
     btn.click()
     assert len(opened) == 1
-    controller.operations.shutdown()
+    loop.exec()  # let the (instant) version command finish before the controller is torn down
+    assert controller.operations.operations()[0].status == "succeeded"
 
 
 def test_new_pages_are_real_not_placeholders(qapp, controller):

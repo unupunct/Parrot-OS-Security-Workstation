@@ -12,12 +12,6 @@ from wifi_center.security.operation_policy import PolicyViolation
 PY = sys.executable
 
 
-@pytest.fixture(scope="module")
-def qapp():
-    from PySide6.QtWidgets import QApplication
-    return QApplication.instance() or QApplication([])
-
-
 def profile(*ops):
     return ToolProfile(id="t", name="T", description="", category="c", executables=("python",),
                        docs_url="https://x", source_url="https://x", install_hint="", operations=tuple(ops))
@@ -97,3 +91,17 @@ def test_orphaned_running_rows_marked_interrupted(paths):
     c2 = AppController(paths=paths, console_log=False)
     assert c2.db.query_one("SELECT status FROM operations WHERE name='x'")["status"] == "interrupted"
     c2.shutdown()
+
+
+def test_shutdown_finalises_running_operation(qapp, controller):
+    op = Operation("run", "Run", "", LaunchMethod.CLI, ("-c", "import time; time.sleep(30)"), 60)
+    p = profile(op)
+    oid = controller.operations.start(p, LaunchRequest("t", "run", (PY, "-c", "import time; time.sleep(30)"),
+                                                       LaunchMethod.CLI, 60))
+    wait_ms = QEventLoop()
+    QTimer.singleShot(300, wait_ms.quit)
+    wait_ms.exec()
+    controller.operations.shutdown()
+    assert controller.operations.get(oid).status == "cancelled"
+    row = controller.db.query_one("SELECT status, finished_at FROM operations WHERE id=?", (oid,))
+    assert row["status"] == "cancelled" and row["finished_at"]

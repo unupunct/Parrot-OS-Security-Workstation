@@ -38,6 +38,16 @@ class _Task(QRunnable):
             pass
 
 
+def _guard(callback):
+    """A failing completion callback (e.g. UI already closed) is logged, never fatal."""
+    def wrapper(value=None):
+        try:
+            callback(value)
+        except Exception:
+            log.exception("background completion callback failed")
+    return wrapper
+
+
 def run_in_background(
     fn: Callable[[], Any],
     on_done: Callable[[Any], None],
@@ -45,9 +55,9 @@ def run_in_background(
 ) -> None:
     """Call from the GUI thread. `on_done` / `on_error` run on the GUI thread."""
     task = _Task(fn)
-    task.signals.finished.connect(on_done)
+    task.signals.finished.connect(_guard(on_done))
     if on_error:
-        task.signals.failed.connect(on_error)
+        task.signals.failed.connect(_guard(on_error))
     task.signals.finished.connect(lambda _=None: _live.discard(task))
     task.signals.failed.connect(lambda _=None: _live.discard(task))
     _live.add(task)

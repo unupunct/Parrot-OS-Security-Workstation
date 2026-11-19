@@ -9,7 +9,10 @@ from ..services.adapter_service import AdapterService
 from ..services.backup_service import BackupService
 from ..security.audit_log import AuditLog
 from ..services.operation_manager import OperationManager
+from ..services.bluetooth_service import BluetoothService
+from ..services.packet_service import PacketService
 from ..services.system_service import SystemService
+from ..services.wireless_service import WirelessService
 from ..services.tool_manager import ToolManager
 from .event_bus import EventBus
 from .logging_setup import setup_logging
@@ -35,6 +38,9 @@ class AppController:
             BackupService,
             BackupService(self.db, self.paths.backup_dir),
         )
+        self.wireless = WirelessService(self.db)
+        self.packets = PacketService()
+        self.bluetooth = BluetoothService(self.db)
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)
@@ -44,5 +50,7 @@ class AppController:
     def shutdown(self) -> None:
         log.info("shutting down")
         self.operations.shutdown()
+        from PySide6.QtCore import QThreadPool
+        QThreadPool.globalInstance().waitForDone(5000)  # let background tasks finish before closing the DB
         self.audit.record("app.stop")
         self.db.close()
