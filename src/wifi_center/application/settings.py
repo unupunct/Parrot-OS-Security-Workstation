@@ -30,6 +30,7 @@ SPECS: dict[str, Spec] = {
     "general.restore_last_workspace": Spec(True, _is_bool),
     "general.last_page": Spec("overview", _is_str),
     "general.resources_dir": Spec("", _is_str),  # "" = default location
+    "general.local_resources_dir": Spec("", _is_str),
     "appearance.accent": Spec("#00FF66", lambda v: _is_str(v) and bool(_HEX.match(v))),
     "logging.level": Spec("INFO", lambda v: v in ("DEBUG", "INFO", "WARNING", "ERROR")),
     "ui.window_geometry": Spec("", _is_str),  # base64 from saveGeometry

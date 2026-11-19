@@ -18,6 +18,7 @@ from ..services.osint_service import OsintService
 from ..services.packet_service import PacketService
 from ..services.project_service import ProjectService
 from ..services.report_import import ReportImportService
+from ..services.resource_library import LibraryService
 from ..services.system_service import SystemService
 from ..services.wireless_service import WirelessService
 from ..services.tool_manager import ToolManager
@@ -55,6 +56,11 @@ class AppController:
         self.report_import = ReportImportService(self.db, self.projects)
         self.bloodhound = BloodHoundService()
         self.osint = OsintService(self.db)
+        self.wordlists = LibraryService(
+            self.db, lambda: self.settings.resources_dir(self.paths.default_resources_dir), "wordlists")
+        self.local_resources = LibraryService(
+            self.db, lambda: Path(self.settings.get("general.local_resources_dir")
+                                  or self.paths.default_resources_dir.parent / "Local"), "local")
         self.audit = AuditLog(self.paths.log_dir / "audit.log")
         self.tools = ToolManager(self.db)
         self.operations = OperationManager(self.db, self.audit)

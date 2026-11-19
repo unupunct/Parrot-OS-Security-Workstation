@@ -30,7 +30,7 @@ def test_every_page_can_be_opened(qapp, controller):
         assert w.topbar.heading.text() == item.title
     assert isinstance(w._pages["overview"], Dashboard)
     assert isinstance(w._pages["settings"], SettingsPage)
-    assert isinstance(w._pages["wordlists"], PlannedPage)
+    assert isinstance(w._pages["cleanup"], PlannedPage)   # Phase 7: still planned
     w.close()
 
 

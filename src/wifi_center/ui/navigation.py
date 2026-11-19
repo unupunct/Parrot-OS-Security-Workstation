@@ -85,7 +85,7 @@ NAVIGATION: tuple[NavCategory, ...] = (
     )),
 )
 
-CURRENT_PHASE = 5
+CURRENT_PHASE = 6
 
 
 def all_items() -> list[NavItem]:

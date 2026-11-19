@@ -26,6 +26,7 @@ from .pages.kismet_page import KismetPage
 from .pages.packets_page import PacketsPage
 from .pages.osint_pages import OsintWorkspacePage
 from .pages.planned import PlannedPage
+from .pages.resource_pages import DocumentationPage, ResourceLibraryPage
 from .pages.settings_page import SettingsPage
 from .pages.spectrum_page import SpectrumPage
 from .pages.terminal_page import TerminalPage
@@ -164,6 +165,9 @@ class MainWindow(QMainWindow):
             "assessment": lambda: AssessmentPage(self.app),
             "web_security": self._make_web_security,
             "password_audit": lambda: PasswordAuditPage(self.app),
+            "wordlists": lambda: ResourceLibraryPage(self.app, "wordlists"),
+            "local_resources": lambda: ResourceLibraryPage(self.app, "local"),
+            "docs": lambda: DocumentationPage(self.app),
             "osint": lambda: OsintWorkspacePage(self.app, "explorer"),
             "osint_user": lambda: OsintWorkspacePage(self.app, "username"),
             "osint_email": lambda: OsintWorkspacePage(self.app, "email"),
