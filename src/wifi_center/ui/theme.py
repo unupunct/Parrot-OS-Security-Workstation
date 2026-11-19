@@ -92,10 +92,10 @@ QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid %(border_active)s; border-radius: 4px; background: %(panel)s; }
 QCheckBox::indicator:checked { background: %(green)s; border-color: %(green)s; }
 
-QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QTextBrowser, QListWidget, QSpinBox {
+QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QTextBrowser, QListWidget, QSpinBox, QDoubleSpinBox {
     background: %(panel)s; border: 1px solid %(border)s; border-radius: 7px; padding: 5px 8px;
     selection-background-color: %(accent_dim)s; selection-color: #031208; }
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus { border-color: %(green)s; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus { border-color: %(green)s; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox QAbstractItemView { background: %(panel_elevated)s; border: 1px solid %(border_active)s; selection-background-color: %(accent_tint2)s; selection-color: %(green)s; }
 QListWidget::item { padding: 6px 8px; border-radius: 5px; }

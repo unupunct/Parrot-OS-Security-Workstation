@@ -79,6 +79,8 @@ class AppController:
         from ..services.docs_service import DocsService
         self.docs = DocsService()
         from ..services.lan_scanner import LanScanner
+        from ..services.network_discovery import NetworkDiscoveryEngine
+        self.netdisc = NetworkDiscoveryEngine(self.db, self.wireless.oui, projects=self.projects)
         self.lan = LanScanner(self.wireless.oui, known=lambda: self.settings.get("lan.devices"),
                               save_known=lambda d: self.settings.set("lan.devices", d))
         self.software = SoftwareSources(self.apt)

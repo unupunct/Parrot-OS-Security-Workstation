@@ -40,6 +40,7 @@ class Topology:
     edges: list[tuple[str, str]]
     interface: str | None = None
     note: str = ""
+    hub: str | None = None           # node id the layout centres on (default: the gateway, else this computer)
 
     @property
     def host_count(self) -> int:

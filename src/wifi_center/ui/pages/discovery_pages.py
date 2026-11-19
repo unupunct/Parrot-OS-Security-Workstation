@@ -22,6 +22,7 @@ from ..charts import fmt_ts, make_table
 from ..design.components import LoadingIndicator, MatrixButton
 from ..design.tokens import T
 from ..topology import TopologyView
+from .lan_dashboard import DiscoveryDashboard
 from .netsec_common import ProjectBar, confirm_dialog
 
 esc = html.escape
@@ -51,7 +52,9 @@ class NetworkDiscoveryPage(QWidget):
         note.setWordWrap(True)
         lay.addWidget(note)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._scan_tab(), "Scan")
+        self.dashboard = DiscoveryDashboard(app, self._pid)        # advanced LAN discovery; the Nmap workflow tabs follow unchanged
+        self.tabs.addTab(self.dashboard, "Discovery dashboard")
+        self.tabs.addTab(self._scan_tab(), "Nmap scan")
         self.tabs.addTab(self._scope_tab(), "Authorized scope")
         self.tabs.addTab(self._results_tab(), "Results")
         self.tabs.addTab(self._history_tab(), "History and comparison")
@@ -63,6 +66,8 @@ class NetworkDiscoveryPage(QWidget):
         return self.bar.project_id()
 
     def _project_changed(self, _pid: int) -> None:
+        if hasattr(self, "dashboard"):
+            self.dashboard.project_changed()
         self._reload_scope()
         self._reload_scans()
         self._update_scan_state()

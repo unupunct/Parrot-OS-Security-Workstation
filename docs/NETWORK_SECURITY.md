@@ -44,3 +44,31 @@ WIFI Center does not crack anything. The page evaluates candidate passwords you 
 are authorized to evaluate) against a policy: length, character classes, repeats, sequences, user name, an optional
 approved blocklist. John the Ripper is shown as a detected tool but is not run. Results name entries by line or user
 name; password text is not stored, logged, exported or put into findings, only aggregate counts.
+
+## Discovery dashboard (Network Discovery, first tab)
+
+An advanced LAN discovery module. The Nmap workflow tabs next to it are unchanged.
+
+* **Identify my network**: reads `ip -j address`, `ip -j route`, `ip -j neigh` and `resolvectl status` (falling back to
+  `/etc/resolv.conf`) and shows each active interface with its real prefix length, subnet, gateway (and its MAC), DNS and IPv6
+  addresses. The subnet is calculated from the prefix length, never guessed.
+* **Scan modes**: Quick Discovery (ARP/ICMP, short timeout), Full Subnet Discovery (every usable address plus a retry pass),
+  Neighbor Discovery (reads ARP/IPv6 neighbour tables, sends nothing). Optional IPv6 neighbour discovery sends one all-nodes
+  link-local echo and reads the neighbour table. Concurrency and timeout are configurable; scans can be paused, resumed and cancelled,
+  and are aborted (and saved) if the interface's address changes mid-scan.
+* **Safety, enforced in code**: a project is required and the range must be inside its authorized scope (never widened
+  automatically; the dashboard offers a confirmed "Add to authorized scope" action), must be a subnet of a directly attached private
+  network and at most 4096 addresses. Only ping, ARP/NDP resolution and neighbour-table reads are used. Every scan needs a
+  confirmation that shows the exact range, interface, project and what will be sent, and is written to the audit log.
+* **Results**: IP, MAC, host name, manufacturer (local OUI database), device type, response method (icmp / arp / ndp /
+  neighbor-cache / local), latency, status (responded / cached), first and last seen, notes (new, ip changed, multiple IPs).
+  A missing answer never means a host is offline. Export as CSV, JSON or HTML.
+* **Device identification**: *confirmed* (gateway from the default route, this computer from its own addresses) is kept apart from
+  *inferred* (manufacturer / host-name hints, private MAC addresses), and every inference shows its reason.
+* **Topology**: only evidence the system can show is drawn: Internet to gateway (default route), this computer and every host
+  to the local network segment (ARP/NDP on this computer's own Layer-2 segment). Hosts are not linked to the router, because
+  sharing a segment with it does not show how they connect to it. Clicking a node lists the evidence for each connection.
+* **History**: every scan (project, scope, interface, range, mode, duration, results) is stored in `nd_scans` / `nd_hosts`, device
+  history (names, first seen, last IP) in `nd_devices`. Scans can be compared (new, not seen, changed). Nothing is deleted
+  unless you delete a scan yourself.
+

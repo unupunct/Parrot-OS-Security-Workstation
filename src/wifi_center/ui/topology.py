@@ -21,14 +21,23 @@ from .design.icons import icon
 from .design.motion import Animated, Motion
 from .design.tokens import T
 
-KIND_COLOR = {"self": T.green, "gateway": T.cyan}
+KIND_COLOR = {"self": T.green, "gateway": T.cyan, "internet": "#B07CFF", "segment": T.text_secondary}
+ALL_KINDS = {"self", "gateway", "host", "internet", "segment"}
+DEVICE_COLORS = (("printer", T.warning), ("phone", "#3B9BFF"), ("tv", "#FF8AD8"), ("camera", T.danger), ("network", T.cyan),
+                 ("nas", "#E0B060"), ("storage", "#E0B060"), ("computer", T.green), ("iot", "#7CE0C8"), ("private", "#3B9BFF"))
 STATE_COLOR = {"reachable": T.emerald, "stale": T.warning, "unknown": T.text_secondary}
-RADIUS = {"self": 13.0, "gateway": 15.0, "host": 9.0}
+RADIUS = {"self": 13.0, "gateway": 15.0, "host": 9.0, "internet": 14.0, "segment": 12.0}
 MAX_PARTICLE_EDGES = 250
 
 
 def node_color(n: NetNode) -> str:
-    return KIND_COLOR.get(n.kind) or STATE_COLOR.get(n.state, T.text_secondary)
+    if n.kind in KIND_COLOR:
+        return KIND_COLOR[n.kind]
+    t = (n.device_type or "").lower()
+    for word, col in DEVICE_COLORS:
+        if word in t:
+            return col
+    return STATE_COLOR.get(n.state, T.text_secondary)
 
 
 class TopologyView(Animated, QWidget):
@@ -55,7 +64,7 @@ class TopologyView(Animated, QWidget):
         self._hover: str | None = None
         self._press: QPointF | None = None
         self._dragged = False
-        self._filter_text, self._filter_kinds = "", {"self", "gateway", "host"}
+        self._filter_text, self._filter_kinds = "", set(ALL_KINDS)
         self.animation_paused = False
         self._sprites: dict[str, QPixmap] = {}
         self._fit_pending = True
@@ -103,7 +112,7 @@ class TopologyView(Animated, QWidget):
         self._index = {n.id: i for i, n in enumerate(self._nodes)}
         self._edges = [(self._index[a], self._index[b]) for a, b in topo.edges if a in self._index and b in self._index]
         n = len(self._nodes)
-        hub = self._index.get("gateway", self._index.get("self"))
+        hub = self._index.get(topo.hub) if topo.hub in self._index else self._index.get("gateway", self._index.get("self"))
         fixed = {}
         if "gateway" in self._index and "self" in self._index:
             fixed[self._index["self"]] = (0.0, 125.0)
@@ -124,7 +133,7 @@ class TopologyView(Animated, QWidget):
 
     def set_filter(self, text: str = "", kinds: set[str] | None = None) -> None:
         self._filter_text = text.strip().lower()
-        self._filter_kinds = kinds if kinds is not None else {"self", "gateway", "host"}
+        self._filter_kinds = kinds if kinds is not None else set(ALL_KINDS)
         self.update()
 
     def matches(self, n: NetNode) -> bool:
@@ -364,7 +373,8 @@ class TopologyView(Animated, QWidget):
     def _paint_legend(self, p: QPainter) -> None:
         if self._legend_pix is None:
             items = [("This computer", T.green), ("Gateway", T.cyan), ("Host – reachable", T.emerald),
-                     ("Host – stale", T.warning), ("Host – unknown", T.text_secondary)]
+                     ("Host – stale", T.warning), ("Host – unknown", T.text_secondary), ("Internet (default route)", KIND_COLOR["internet"]),
+                     ("Network segment (hub)", KIND_COLOR["segment"])]
             h = 17 * (len(items) + 1) + 12
             pix = QPixmap(166, h)
             pix.fill(Qt.GlobalColor.transparent)
